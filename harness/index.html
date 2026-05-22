@@ -9,6 +9,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #020617; color: #e2e8f0; overscroll-behavior: none; }
     .prose-invert h1, .prose-invert h2, .prose-invert h3 { color: #f1f5f9; font-weight: 600; margin-top: 1.2em; margin-bottom: 0.5em; }
@@ -84,6 +85,11 @@
     // =====================================================================
     const STORAGE_KEY = 'harness:v1';
 
+    // Supabase backend config
+    const SUPABASE_URL = 'https://zphlbhviyryubngqlozf.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_tJoJxhPtBDdEF3WEZAqu9A_B7BWI4k4';
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
     const MODELS = [
       { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', desc: 'Default — balanced' },
       { id: 'claude-opus-4-7', name: 'Opus 4.7', desc: 'Hard reasoning' },
@@ -129,19 +135,22 @@
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + time;
     };
 
-    function loadState() {
+    async function loadState(userId) {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const s = JSON.parse(raw);
-          if (s && s.projects && s.projects.length) return s;
+        const { data, error } = await sb.from('user_state').select('state').eq('user_id', userId).maybeSingle();
+        if (error) { console.warn('load failed', error); return initialState(); }
+        if (data && data.state && data.state.projects && data.state.projects.length) {
+          return data.state;
         }
-      } catch {}
+      } catch (e) { console.warn('load failed', e); }
       return initialState();
     }
 
-    function saveState(s) {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (e) { console.warn('persist failed', e); }
+    async function saveState(userId, state) {
+      try {
+        const { error } = await sb.from('user_state').upsert({ user_id: userId, state }, { onConflict: 'user_id' });
+        if (error) console.warn('save failed', error);
+      } catch (e) { console.warn('save failed', e); }
     }
 
     function initialState() {
@@ -156,7 +165,7 @@
           documents: [{
             id: docId,
             title: 'Welcome',
-            content: '# Welcome to your harness\n\nThis is a **working document** — markdown on the left, rendered on the right. Claude will eventually propose edits here as accept/reject diffs.\n\n## What lives here\n\n- **Documents** (this) — long-form prose, briefs, frameworks\n- **Datasets** — structured rows (decisions, projects, contacts)\n- **Memory** — facts about you, project state, reference library\n- **Sessions** — every chat saved & searchable\n- **Skills** — Claude\'s instructions, with three update modes\n\n## Next\n\nClick around. Backend is stubbed; chat replies are echoes. Once you tell me your Supabase + Anthropic creds are ready, I\'ll wire the live calls.',
+            content: '# Welcome to your harness\n\nThis is a **working document** — markdown on the left, rendered on the right. Claude will eventually propose edits here as accept/reject diffs.\n\n## What lives here\n\n- **Documents** (this) — long-form prose, briefs, frameworks\n- **Datasets** — structured rows (decisions, projects, contacts)\n- **Memory** — facts about you, project state, reference library\n- **Sessions** — every chat saved & searchable\n- **Skills** — Claude\'s instructions, with three update modes\n\n## Next\n\nClick around. Try asking Claude something. Edit this document. Add memory facts. Everything syncs to your account across devices.',
             createdAt: now(),
             updatedAt: now(),
             versions: [],
@@ -197,34 +206,185 @@
     }
 
     // =====================================================================
-    // STUB CLAUDE CALL  (replaced when backend wired)
+    // SYSTEM PROMPT BUILDER
     // =====================================================================
-    async function callClaudeStub(messages, opts = {}) {
-      const last = messages[messages.length - 1];
-      const text = last && last.content ? last.content : '';
-      await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
+    function buildSystemPrompt(project) {
+      const parts = [];
+      const forceSkills = (project.skills || []).filter(s => s.mode === 'force_inject' && s.body && s.body.trim());
+      if (forceSkills.length) {
+        parts.push('## Skills (always-on instructions)\n\n' + forceSkills.map(s => `### ${s.name}\n${s.body.trim()}`).join('\n\n'));
+      }
+      const facts = project.memoryFacts || [];
+      const byBucket = { about_me: [], project: [], reference: [] };
+      facts.forEach(f => { if (byBucket[f.bucket]) byBucket[f.bucket].push(f.content); });
+      const memSections = [];
+      if (byBucket.about_me.length) memSections.push('### About me\n' + byBucket.about_me.map(c => '- ' + c).join('\n'));
+      if (byBucket.project.length) memSections.push('### Project state\n' + byBucket.project.map(c => '- ' + c).join('\n'));
+      if (byBucket.reference.length) memSections.push('### Reference\n' + byBucket.reference.map(c => '- ' + c).join('\n'));
+      if (memSections.length) parts.push('## Memory\n\n' + memSections.join('\n\n'));
+      return parts.length ? parts.join('\n\n---\n\n') : undefined;
+    }
+
+    // =====================================================================
+    // CLAUDE CALL (via Supabase Edge Function proxy)
+    // =====================================================================
+    async function callClaude(messages, opts = {}) {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) throw new Error('Not signed in');
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          messages: messages.map(m => ({ role: m.role, content: m.content })),
+          model: opts.model || 'claude-sonnet-4-6',
+          system: opts.system,
+          max_tokens: opts.max_tokens || 4096,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Chat failed (${res.status})`);
+
       return {
         role: 'assistant',
-        content: `_(scaffold mode — no API wired yet)_\n\nI'd respond to: "${text.slice(0, 240)}${text.length > 240 ? '…' : ''}"\n\nOnce you wire the Anthropic API, this will be a real response with your memory + skills injected. The chat shell, persistence, session log, and document/dataset/memory CRUD are all already live — feel free to click around.`,
+        content: data.content || '',
         ts: now(),
-        model: opts.model || 'stub',
+        model: data.model || opts.model || 'claude-sonnet-4-6',
+        usage: data.usage,
       };
     }
 
     // =====================================================================
-    // ROOT APP
+    // ROOT — AUTH GATE
     // =====================================================================
-    function App() {
-      const [state, setState] = useState(loadState);
-      const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+    function Root() {
+      const [authReady, setAuthReady] = useState(false);
+      const [session, setSession] = useState(null);
 
-      useEffect(() => { saveState(state); }, [state]);
+      useEffect(() => {
+        sb.auth.getSession().then(({ data }) => {
+          setSession(data.session);
+          setAuthReady(true);
+        });
+        const { data: sub } = sb.auth.onAuthStateChange((_evt, sess) => setSession(sess));
+        return () => sub?.subscription?.unsubscribe();
+      }, []);
+
+      if (!authReady) return <CenterScreen><span className="text-slate-500 text-sm">Loading…</span></CenterScreen>;
+      if (!session) return <SignIn />;
+      return <App userId={session.user.id} userEmail={session.user.email} />;
+    }
+
+    function CenterScreen({ children }) {
+      return (
+        <div className="h-screen flex items-center justify-center bg-slate-950 text-slate-100">
+          {children}
+        </div>
+      );
+    }
+
+    function SignIn() {
+      const [email, setEmail] = useState('');
+      const [sent, setSent] = useState(false);
+      const [busy, setBusy] = useState(false);
+      const [err, setErr] = useState(null);
+
+      const submit = async (e) => {
+        e.preventDefault();
+        if (!email.trim()) return;
+        setBusy(true); setErr(null);
+        const { error } = await sb.auth.signInWithOtp({
+          email: email.trim(),
+          options: { emailRedirectTo: window.location.origin },
+        });
+        setBusy(false);
+        if (error) setErr(error.message); else setSent(true);
+      };
+
+      return (
+        <CenterScreen>
+          <div className="w-full max-w-sm px-6">
+            <div className="flex items-center gap-2 mb-6 justify-center">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white">
+                <Icon name="spark" className="w-5 h-5" />
+              </div>
+              <span className="font-semibold tracking-tight text-lg">Harness</span>
+            </div>
+            {sent ? (
+              <div className="text-center text-sm text-slate-300 space-y-3">
+                <p>Check your email — sent a sign-in link to <span className="text-violet-300">{email}</span>.</p>
+                <p className="text-slate-500 text-xs">Click the link in the email to continue.</p>
+                <button onClick={() => { setSent(false); setEmail(''); }} className="text-xs text-slate-500 hover:text-slate-300 underline mt-4">Use a different email</button>
+              </div>
+            ) : (
+              <form onSubmit={submit} className="space-y-3">
+                <label className="block text-sm text-slate-400">Sign in with your email</label>
+                <input
+                  type="email"
+                  autoFocus
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-violet-500"
+                />
+                {err && <div className="text-xs text-red-400">{err}</div>}
+                <button type="submit" disabled={busy || !email.trim()} className="w-full bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-sm rounded-lg py-2">
+                  {busy ? 'Sending…' : 'Send sign-in link'}
+                </button>
+                <p className="text-xs text-slate-500 text-center pt-2">We'll email you a one-tap link. No password required.</p>
+              </form>
+            )}
+          </div>
+        </CenterScreen>
+      );
+    }
+
+    // =====================================================================
+    // ROOT APP (post-auth)
+    // =====================================================================
+    function App({ userId, userEmail }) {
+      const [state, setState] = useState(null);
+      const [loadErr, setLoadErr] = useState(null);
+      const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+      const saveTimer = useRef(null);
+      const initialLoadDone = useRef(false);
+
+      // Initial load
+      useEffect(() => {
+        let cancelled = false;
+        loadState(userId).then(s => {
+          if (cancelled) return;
+          setState(s);
+          initialLoadDone.current = true;
+        }).catch(e => { if (!cancelled) setLoadErr(String(e?.message || e)); });
+        return () => { cancelled = true; };
+      }, [userId]);
+
+      // Debounced save on state change
+      useEffect(() => {
+        if (!state || !initialLoadDone.current) return;
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => { saveState(userId, state); }, 800);
+        return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+      }, [state, userId]);
 
       useEffect(() => {
         const onResize = () => setIsMobile(window.innerWidth < 768);
         window.addEventListener('resize', onResize);
         return () => window.removeEventListener('resize', onResize);
       }, []);
+
+      if (loadErr) {
+        return <CenterScreen><div className="text-center text-sm text-red-400 max-w-md px-6"><p className="mb-3">Failed to load your data:</p><pre className="text-xs text-slate-500 whitespace-pre-wrap">{loadErr}</pre></div></CenterScreen>;
+      }
+      if (!state) {
+        return <CenterScreen><span className="text-slate-500 text-sm">Loading your data…</span></CenterScreen>;
+      }
 
       const project = state.projects.find(p => p.id === state.currentProjectId) || state.projects[0];
 
@@ -242,10 +402,10 @@
       const setSelectedSkill = (id) => setState(s => ({ ...s, selectedSkillId: id }));
 
       if (isMobile) {
-        return <MobileApp state={state} setState={setState} project={project} updateProject={updateProject} setView={setView} setModel={setModel} setCurrentSession={setCurrentSession} setSelectedDoc={setSelectedDoc} setSelectedDataset={setSelectedDataset} setSelectedSkill={setSelectedSkill} />;
+        return <MobileApp userEmail={userEmail} state={state} setState={setState} project={project} updateProject={updateProject} setView={setView} setModel={setModel} setCurrentSession={setCurrentSession} setSelectedDoc={setSelectedDoc} setSelectedDataset={setSelectedDataset} setSelectedSkill={setSelectedSkill} />;
       }
 
-      return <DesktopApp state={state} setState={setState} project={project} updateProject={updateProject} setView={setView} setModel={setModel} setCurrentSession={setCurrentSession} setSelectedDoc={setSelectedDoc} setSelectedDataset={setSelectedDataset} setSelectedSkill={setSelectedSkill} />;
+      return <DesktopApp userEmail={userEmail} state={state} setState={setState} project={project} updateProject={updateProject} setView={setView} setModel={setModel} setCurrentSession={setCurrentSession} setSelectedDoc={setSelectedDoc} setSelectedDataset={setSelectedDataset} setSelectedSkill={setSelectedSkill} />;
     }
 
     // =====================================================================
@@ -419,9 +579,7 @@
           <div className="p-3 border-t border-slate-800 text-xs text-slate-500">
             <div className="flex items-center justify-between mb-1">
               <span>Backend</span>
-              <span className={state.config.anthropicKeyConfigured ? 'text-green-400' : 'text-amber-400'}>
-                {state.config.anthropicKeyConfigured ? 'wired' : 'scaffold'}
-              </span>
+              <span className="text-green-400">wired</span>
             </div>
           </div>
         </aside>
@@ -521,10 +679,10 @@
 
         setPending(true);
         try {
-          // Gather context for the call (will use this when wired)
           const sessNow = (project.sessions.find(s => s.id === sessId) || { messages: [] });
           const fullMessages = [...sessNow.messages, userMsg];
-          const reply = await callClaudeStub(fullMessages, { model: state.ui.model });
+          const system = buildSystemPrompt(project);
+          const reply = await callClaude(fullMessages, { model: state.ui.model, system });
           updateProject(p => ({
             ...p,
             sessions: p.sessions.map(s => s.id === sessId
@@ -576,7 +734,7 @@
                 <div className="text-center text-slate-500 py-12">
                   <Icon name="chat" className="w-8 h-8 mx-auto mb-3 opacity-40" />
                   <p className="text-sm">Start typing to begin a session.</p>
-                  <p className="text-xs mt-1 text-slate-600">Memory, skills, and project state will be injected once the backend is wired.</p>
+                  <p className="text-xs mt-1 text-slate-600">Saved as a session you can return to.</p>
                 </div>
               )}
               {messages.map((m, i) => <MessageBubble key={i} message={m} />)}
@@ -1327,22 +1485,29 @@
     // SETTINGS VIEW
     // =====================================================================
     function SettingsView(props) {
-      const { state, setState } = props;
+      const { state, setState, userEmail } = props;
+      const signOut = async () => { await sb.auth.signOut(); };
       return (
         <div className="h-full overflow-y-auto scrollbar-thin">
           <div className="max-w-2xl mx-auto p-6 space-y-6">
             <header>
               <h1 className="text-xl font-semibold">Settings</h1>
-              <p className="text-sm text-slate-400 mt-1">Configure backend wiring, manage projects, view storage.</p>
+              <p className="text-sm text-slate-400 mt-1">Backend status, account, projects, and data.</p>
             </header>
 
             <section className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
+              <h2 className="font-medium mb-1">Account</h2>
+              <p className="text-xs text-slate-500 mb-3">Signed in as <span className="text-slate-300">{userEmail || '—'}</span></p>
+              <button onClick={signOut} className="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sm">Sign out</button>
+            </section>
+
+            <section className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
               <h2 className="font-medium mb-1">Backend status</h2>
-              <p className="text-xs text-slate-500 mb-3">v1 scaffold uses localStorage. Live wiring comes next.</p>
+              <p className="text-xs text-slate-500 mb-3">State syncs to Supabase. Chat goes through the chat Edge Function.</p>
               <div className="space-y-2 text-sm">
-                <Status label="Supabase" ok={state.config.supabaseConfigured} note="paste URL + anon key to wire" />
-                <Status label="Anthropic API" ok={state.config.anthropicKeyConfigured} note="key stored as Supabase Edge Function secret" />
-                <Status label="Prompt caching" ok={false} note="enabled with API wiring" />
+                <Status label="Supabase" ok={true} note={SUPABASE_URL.replace('https://','')} />
+                <Status label="Anthropic API" ok={true} note="via chat Edge Function" />
+                <Status label="Prompt caching" ok={false} note="v2" />
                 <Status label="Session embeddings" ok={false} note="v2" />
               </div>
             </section>
@@ -1375,8 +1540,8 @@
             </section>
 
             <section className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
-              <h2 className="font-medium mb-1">Local data</h2>
-              <p className="text-xs text-slate-500 mb-3">v1 stores everything in your browser localStorage. Export / import below; once Supabase is wired, this is automatic.</p>
+              <h2 className="font-medium mb-1">Data</h2>
+              <p className="text-xs text-slate-500 mb-3">Your data syncs to Supabase automatically. Export / import for backup or migration.</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => {
@@ -1407,7 +1572,6 @@
                 <button
                   onClick={() => {
                     if (!confirm('Reset to initial demo state? This deletes everything.')) return;
-                    localStorage.removeItem(STORAGE_KEY);
                     setState(initialState());
                   }}
                   className="px-3 py-1.5 rounded-md bg-red-600/15 border border-red-500/30 hover:bg-red-600/25 text-sm text-red-300">
@@ -1417,8 +1581,7 @@
             </section>
 
             <div className="text-xs text-slate-600 pb-4">
-              Harness v1 scaffold · designed for solo strategy/planning use ·
-              data lives in browser until backend is wired
+              Harness v1 · data syncs to Supabase across devices
             </div>
           </div>
         </div>
@@ -1486,7 +1649,7 @@
     // =====================================================================
     // RENDER
     // =====================================================================
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
   </script>
 </body>
 </html>
