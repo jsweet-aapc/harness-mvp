@@ -3,613 +3,1489 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RecurDay - Schedule by Pattern</title>
+  <title>Harness</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
-    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #020617; color: #e2e8f0; overscroll-behavior: none; }
+    .prose-invert h1, .prose-invert h2, .prose-invert h3 { color: #f1f5f9; font-weight: 600; margin-top: 1.2em; margin-bottom: 0.5em; }
+    .prose-invert h1 { font-size: 1.5em; }
+    .prose-invert h2 { font-size: 1.25em; }
+    .prose-invert h3 { font-size: 1.1em; }
+    .prose-invert p { margin: 0.5em 0; line-height: 1.6; color: #cbd5e1; }
+    .prose-invert ul, .prose-invert ol { margin: 0.5em 0; padding-left: 1.5em; color: #cbd5e1; }
+    .prose-invert li { margin: 0.2em 0; }
+    .prose-invert code { background: #1e293b; padding: 0.15em 0.3em; border-radius: 3px; font-size: 0.9em; color: #e2e8f0; }
+    .prose-invert pre { background: #0f172a; padding: 0.8em; border-radius: 6px; overflow-x: auto; border: 1px solid #1e293b; }
+    .prose-invert pre code { background: transparent; padding: 0; }
+    .prose-invert a { color: #a78bfa; text-decoration: underline; }
+    .prose-invert blockquote { border-left: 3px solid #475569; padding-left: 1em; color: #94a3b8; margin: 0.5em 0; font-style: italic; }
+    .prose-invert hr { border: none; border-top: 1px solid #334155; margin: 1.5em 0; }
+    .prose-invert table { border-collapse: collapse; margin: 0.8em 0; }
+    .prose-invert th, .prose-invert td { border: 1px solid #334155; padding: 0.4em 0.7em; }
+    .prose-invert th { background: #1e293b; }
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #475569; }
+    textarea, input { font-family: inherit; }
+    .focus-ring:focus { outline: 2px solid #7c3aed; outline-offset: 1px; }
+    /* Animated dot for "thinking" */
+    @keyframes pulse-dot { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
+    .dot { animation: pulse-dot 1.4s infinite ease-in-out; }
+    .dot:nth-child(2) { animation-delay: 0.16s; }
+    .dot:nth-child(3) { animation-delay: 0.32s; }
   </style>
 </head>
 <body>
   <div id="root"></div>
-  <script type="text/babel">
-    const { useState, useEffect } = React;
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-    // Simple SVG icons
+    // =====================================================================
+    // ICONS
+    // =====================================================================
     const Icons = {
-      calendar: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>,
-      users: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-      sparkles: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>,
-      check: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-      chevronRight: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>,
-      arrowLeft: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
-      link: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,
-      copy: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
-      shield: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+      chat: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+      doc: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
+      database: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>,
+      brain: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>,
+      clock: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+      spark: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>,
+      settings: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
+      plus: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+      trash: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
+      send: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+      menu: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
+      x: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+      check: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+      chevronDown: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>,
+      chevronRight: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
+      edit: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+      eye: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+      capture: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>,
+      search: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+      folder: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>,
+      help: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
     };
 
-    const Icon = ({ name, className = "w-5 h-5" }) => (
-      <span className={`inline-flex ${className}`} style={{ width: '1em', height: '1em' }}>
-        {React.cloneElement(Icons[name], { width: '100%', height: '100%' })}
-      </span>
-    );
-
-    // Supabase config
-    const SUPABASE_URL = 'https://qnmvfiorrtoelyutcfvp.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFubXZmaW9ycnRvZWx5dXRjZnZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzMTgxOTMsImV4cCI6MjA4Mzg5NDE5M30.ZwgAENocoXd6IIj3_QfItJMK-8rnxaco3JDmyZIEQl4';
-
-    const supabase = {
-      async getResponses(meetingId) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/responses?meeting_id=eq.${meetingId}&select=*`, {
-          headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
-        });
-        return res.ok ? await res.json() : [];
-      },
-      async addResponse(meetingId, name, availability) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/responses`, {
-          method: 'POST',
-          headers: { 
-            'apikey': SUPABASE_ANON_KEY, 
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
-          },
-          body: JSON.stringify({ meeting_id: meetingId, name, availability })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          return data[0]?.id || true;
-        }
-        return null;
-      },
-      async updateResponse(responseId, name, availability) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/responses?id=eq.${responseId}`, {
-          method: 'PATCH',
-          headers: { 
-            'apikey': SUPABASE_ANON_KEY, 
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ name, availability })
-        });
-        return res.ok;
-      },
-      async createShortUrl(meetingId) {
-        const shortCode = Math.random().toString(36).substring(2, 8);
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/short_urls`, {
-          method: 'POST',
-          headers: { 
-            'apikey': SUPABASE_ANON_KEY, 
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
-          },
-          body: JSON.stringify({ short_code: shortCode, meeting_id: meetingId })
-        });
-        return res.ok ? shortCode : null;
-      },
-      async getShortUrl(shortCode) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/short_urls?short_code=eq.${shortCode}&select=meeting_id`, {
-          headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          return data[0]?.meeting_id || null;
-        }
-        return null;
-      }
+    const Icon = ({ name, className = "w-5 h-5" }) => {
+      const svg = Icons[name] || Icons.help;
+      return <span className={`inline-flex items-center justify-center ${className}`} style={{ width: '1em', height: '1em' }}>
+        {React.cloneElement(svg, { width: '100%', height: '100%' })}
+      </span>;
     };
 
-    const encodeMeeting = (data) => btoa(encodeURIComponent(JSON.stringify(data)));
-    const decodeMeeting = (str) => { try { return JSON.parse(decodeURIComponent(atob(str))); } catch { return null; } };
-    const encodeResponse = (data) => btoa(encodeURIComponent(JSON.stringify(data)));
-    const decodeResponse = (str) => { try { return JSON.parse(decodeURIComponent(atob(str))); } catch { return null; } };
+    // =====================================================================
+    // CONSTANTS
+    // =====================================================================
+    const STORAGE_KEY = 'harness:v1';
 
-    const ORDINALS = ['First', 'Second', 'Third', 'Fourth', 'Last'];
-    const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    const START_TIMES = ['8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM'];
-    const END_TIMES = ['9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM', '9:00 PM'];
-    const TIMEZONES = [
-      { value: 'Pacific/Honolulu', label: 'Hawaii (HST)' },
-      { value: 'America/Anchorage', label: 'Alaska (AKST)' },
-      { value: 'America/Los_Angeles', label: 'Pacific (PT)' },
-      { value: 'America/Denver', label: 'Mountain (MT)' },
-      { value: 'America/Chicago', label: 'Central (CT)' },
-      { value: 'America/New_York', label: 'Eastern (ET)' }
+    const MODELS = [
+      { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', desc: 'Default — balanced' },
+      { id: 'claude-opus-4-7', name: 'Opus 4.7', desc: 'Hard reasoning' },
+      { id: 'claude-haiku-4-5', name: 'Haiku 4.5', desc: 'Fast & cheap' },
     ];
 
+    const FIELD_TYPES = [
+      { id: 'text', name: 'Text' },
+      { id: 'longtext', name: 'Long text' },
+      { id: 'number', name: 'Number' },
+      { id: 'date', name: 'Date' },
+      { id: 'select', name: 'Single select' },
+      { id: 'multiselect', name: 'Multi-select' },
+      { id: 'boolean', name: 'Checkbox' },
+    ];
+
+    const MEMORY_BUCKETS = [
+      { id: 'about_me', name: 'About me', desc: 'Preferences, voice, constraints, who I am' },
+      { id: 'project', name: 'Project state', desc: 'Decisions, status, open questions' },
+      { id: 'reference', name: 'Reference library', desc: 'Knowledge Claude can cite' },
+    ];
+
+    const SKILL_MODES = [
+      { id: 'force_inject', name: 'Force-inject', desc: 'Always in system prompt' },
+      { id: 'manual', name: 'Manual update', desc: 'Claude proposes, you approve' },
+      { id: 'semi_auto', name: 'Semi-auto', desc: 'Claude edits, logged for review' },
+    ];
+
+    // =====================================================================
+    // UTILITIES
+    // =====================================================================
+    const uid = () => Math.random().toString(36).substring(2, 12);
+    const now = () => new Date().toISOString();
+    const fmtDate = (iso) => {
+      const d = new Date(iso);
+      const today = new Date();
+      const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+      const isToday = d.toDateString() === today.toDateString();
+      const isYesterday = d.toDateString() === yesterday.toDateString();
+      const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      if (isToday) return `Today, ${time}`;
+      if (isYesterday) return `Yesterday, ${time}`;
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + time;
+    };
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const s = JSON.parse(raw);
+          if (s && s.projects && s.projects.length) return s;
+        }
+      } catch {}
+      return initialState();
+    }
+
+    function saveState(s) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (e) { console.warn('persist failed', e); }
+    }
+
+    function initialState() {
+      const projectId = uid();
+      const docId = uid();
+      const dsId = uid();
+      return {
+        projects: [{
+          id: projectId,
+          name: 'Default project',
+          createdAt: now(),
+          documents: [{
+            id: docId,
+            title: 'Welcome',
+            content: '# Welcome to your harness\n\nThis is a **working document** — markdown on the left, rendered on the right. Claude will eventually propose edits here as accept/reject diffs.\n\n## What lives here\n\n- **Documents** (this) — long-form prose, briefs, frameworks\n- **Datasets** — structured rows (decisions, projects, contacts)\n- **Memory** — facts about you, project state, reference library\n- **Sessions** — every chat saved & searchable\n- **Skills** — Claude\'s instructions, with three update modes\n\n## Next\n\nClick around. Backend is stubbed; chat replies are echoes. Once you tell me your Supabase + Anthropic creds are ready, I\'ll wire the live calls.',
+            createdAt: now(),
+            updatedAt: now(),
+            versions: [],
+          }],
+          datasets: [{
+            id: dsId,
+            name: 'Decisions',
+            schema: [
+              { id: uid(), name: 'decision', type: 'text' },
+              { id: uid(), name: 'status', type: 'select', options: ['open', 'committed', 'rejected', 'revisit'] },
+              { id: uid(), name: 'rationale', type: 'longtext' },
+              { id: uid(), name: 'date', type: 'date' },
+            ],
+            rows: [
+              { id: uid(), decision: 'Use Anthropic API + Supabase Edge Function proxy', status: 'committed', rationale: 'Custom UI requires direct API; key must not live in browser.', date: new Date().toISOString().slice(0,10) },
+              { id: uid(), decision: 'Defer skills learning loop to v2', status: 'committed', rationale: 'MVP first — get docs/memory/chat usable before learning loop.', date: new Date().toISOString().slice(0,10) },
+            ],
+          }],
+          memoryFacts: [
+            { id: uid(), bucket: 'about_me', content: 'I prefer concise responses with concrete recommendations, not options-lists.', createdAt: now() },
+            { id: uid(), bucket: 'about_me', content: 'Primary work: research, planning, strategy. Daily Claude user.', createdAt: now() },
+            { id: uid(), bucket: 'project', content: 'Goal: replace Claude Desktop with a bespoke harness that solves context loss, stale skills, no session log.', createdAt: now() },
+          ],
+          sessions: [],
+          skills: [
+            { id: uid(), name: 'Response style', mode: 'force_inject', body: 'Be concise. Lead with the recommendation. Give the tradeoff in one sentence. Skip options-lists unless I ask.', updatedAt: now() },
+          ],
+        }],
+        currentProjectId: projectId,
+        currentSessionId: null,
+        view: 'chat',
+        selectedDocId: null,
+        selectedDatasetId: null,
+        selectedSkillId: null,
+        ui: { sidebarOpen: true, model: 'claude-sonnet-4-6', mobileTab: 'chat' },
+        config: { anthropicKeyConfigured: false, supabaseConfigured: false },
+      };
+    }
+
+    // =====================================================================
+    // STUB CLAUDE CALL  (replaced when backend wired)
+    // =====================================================================
+    async function callClaudeStub(messages, opts = {}) {
+      const last = messages[messages.length - 1];
+      const text = last && last.content ? last.content : '';
+      await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
+      return {
+        role: 'assistant',
+        content: `_(scaffold mode — no API wired yet)_\n\nI'd respond to: "${text.slice(0, 240)}${text.length > 240 ? '…' : ''}"\n\nOnce you wire the Anthropic API, this will be a real response with your memory + skills injected. The chat shell, persistence, session log, and document/dataset/memory CRUD are all already live — feel free to click around.`,
+        ts: now(),
+        model: opts.model || 'stub',
+      };
+    }
+
+    // =====================================================================
+    // ROOT APP
+    // =====================================================================
     function App() {
-      const [view, setView] = useState('landing');
-      const [meetingData, setMeetingData] = useState(null);
-      const [meetingId, setMeetingId] = useState(null);
-      const [shortCode, setShortCode] = useState(null);
-      const [loading, setLoading] = useState(true);
-      const [guestResponse, setGuestResponse] = useState(null); // { id, name, availability }
+      const [state, setState] = useState(loadState);
+      const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+
+      useEffect(() => { saveState(state); }, [state]);
 
       useEffect(() => {
-        const init = async () => {
-          const hash = window.location.hash;
-          if (hash.startsWith('#/meeting/')) {
-            const encoded = hash.replace('#/meeting/', '');
-            const decoded = decodeMeeting(encoded);
-            if (decoded) { setMeetingData(decoded); setMeetingId(encoded); setView('guest'); }
-          } else if (hash.startsWith('#/s/')) {
-            const code = hash.replace('#/s/', '');
-            const meetingIdFromDb = await supabase.getShortUrl(code);
-            if (meetingIdFromDb) {
-              const decoded = decodeMeeting(meetingIdFromDb);
-              if (decoded) { setMeetingData(decoded); setMeetingId(meetingIdFromDb); setShortCode(code); setView('guest'); }
-            }
-          }
-          setLoading(false);
-        };
-        init();
+        const onResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
       }, []);
 
-      if (loading) {
-        return <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex items-center justify-center"><p className="text-slate-400">Loading...</p></div>;
+      const project = state.projects.find(p => p.id === state.currentProjectId) || state.projects[0];
+
+      const setView = (view) => setState(s => ({ ...s, view, ui: { ...s.ui, sidebarOpen: !isMobile } }));
+
+      const updateProject = (updater) => setState(s => ({
+        ...s,
+        projects: s.projects.map(p => p.id === s.currentProjectId ? updater(p) : p),
+      }));
+
+      const setModel = (model) => setState(s => ({ ...s, ui: { ...s.ui, model } }));
+      const setCurrentSession = (id) => setState(s => ({ ...s, currentSessionId: id }));
+      const setSelectedDoc = (id) => setState(s => ({ ...s, selectedDocId: id }));
+      const setSelectedDataset = (id) => setState(s => ({ ...s, selectedDatasetId: id }));
+      const setSelectedSkill = (id) => setState(s => ({ ...s, selectedSkillId: id }));
+
+      if (isMobile) {
+        return <MobileApp state={state} setState={setState} project={project} updateProject={updateProject} setView={setView} setModel={setModel} setCurrentSession={setCurrentSession} setSelectedDoc={setSelectedDoc} setSelectedDataset={setSelectedDataset} setSelectedSkill={setSelectedSkill} />;
       }
 
-      if (view === 'landing') {
-        return (
-          <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100">
-            <div className="max-w-4xl mx-auto px-6 pt-20 pb-16">
-              <div className="flex items-center gap-2 mb-6">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center"><Icon name="calendar" /></div>
-                <span className="text-xl font-semibold">RecurDay</span>
-              </div>
-              <h1 className="text-5xl font-bold mb-6 leading-tight">Schedule by <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">pattern</span>,<br />not by date.</h1>
-              <p className="text-xl text-slate-400 mb-10 max-w-2xl">Finally, a meeting scheduler for recurring events. Pick "the first Tuesday" or "the third Thursday"—not January 7th, February 4th, March 4th...</p>
-              <button onClick={() => setView('create')} className="px-6 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg font-medium flex items-center gap-2 hover:from-violet-500 hover:to-indigo-500 transition-all shadow-lg shadow-violet-900/30">Create a meeting <Icon name="chevronRight" className="w-4 h-4" /></button>
-            </div>
-            <div className="max-w-4xl mx-auto px-6 py-16 border-t border-slate-800">
-              <div className="grid md:grid-cols-3 gap-8">
-                {[{ icon: 'calendar', title: 'Pattern-based', desc: 'Schedule the 2nd Wednesday, not a specific date' },
-                  { icon: 'users', title: 'Find overlap', desc: 'See which patterns work for everyone' },
-                  { icon: 'sparkles', title: 'Privacy-first', desc: 'No accounts, no emails—just names' }
-                ].map(({ icon, title, desc }) => (
-                  <div key={title} className="p-6 rounded-xl bg-slate-800/50 border border-slate-700/50">
-                    <div className="w-8 h-8 mb-4 text-violet-400"><Icon name={icon} className="w-8 h-8" /></div>
-                    <h3 className="font-semibold mb-2">{title}</h3>
-                    <p className="text-slate-400 text-sm">{desc}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="max-w-4xl mx-auto px-6 py-16 border-t border-slate-800">
-              <h2 className="text-2xl font-bold mb-8">How it works</h2>
-              <div className="space-y-4">
-                {['Pick your recurring day patterns (e.g., "First Monday," "Third Friday")', 'Add optional time preferences', 'Share your unique link with guests', 'See which patterns have the most availability'].map((step, i) => (
-                  <div key={i} className="flex gap-4 items-start">
-                    <span className="w-7 h-7 rounded-full bg-violet-600/20 text-violet-400 flex items-center justify-center text-sm font-medium shrink-0">{i + 1}</span>
-                    <p className="text-slate-300 pt-0.5">{step}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-      }
-
-      if (view === 'create') return <CreateMeeting onBack={() => setView('landing')} initialData={meetingData} onCreated={async (data, id) => { setMeetingData(data); setMeetingId(id); const code = await supabase.createShortUrl(id); setShortCode(code); setView('share'); }} />;
-
-      if (view === 'share') {
-        const fullUrl = `${window.location.origin}${window.location.pathname}#/meeting/${meetingId}`;
-        const shortUrl = shortCode ? `${window.location.origin}${window.location.pathname}#/s/${shortCode}` : null;
-        return (
-          <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
-            <div className="max-w-xl mx-auto pt-16">
-              <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6 text-green-400"><Icon name="check" className="w-8 h-8" /></div>
-              <h1 className="text-3xl font-bold text-center mb-2">Meeting created!</h1>
-              <p className="text-slate-400 text-center mb-8">Share this link with your guests</p>
-              
-              {shortUrl && (
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2 text-violet-400">Short link (recommended)</label>
-                  <div className="bg-slate-800/70 rounded-lg p-4 flex items-center gap-3 border border-violet-500/50">
-                    <span className="text-slate-400"><Icon name="link" /></span>
-                    <span className="text-sm truncate flex-1 text-slate-100 font-medium">{shortUrl}</span>
-                    <button onClick={() => navigator.clipboard.writeText(shortUrl)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors"><Icon name="copy" className="w-4 h-4" /></button>
-                  </div>
-                </div>
-              )}
-              
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2 text-slate-400">{shortUrl ? 'Full link' : 'Share link'}</label>
-                <div className="bg-slate-800/70 rounded-lg p-4 flex items-center gap-3 border border-slate-700">
-                  <span className="text-slate-400"><Icon name="link" /></span>
-                  <span className="text-sm truncate flex-1 text-slate-300">{fullUrl}</span>
-                  <button onClick={() => navigator.clipboard.writeText(fullUrl)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors"><Icon name="copy" className="w-4 h-4" /></button>
-                </div>
-              </div>
-              
-              <div className="flex gap-3 mt-8">
-                <button onClick={() => setView('guest')} className="flex-1 px-4 py-3 bg-violet-600 rounded-lg font-medium hover:bg-violet-500 transition-colors">Preview as guest</button>
-                <button onClick={() => setView('results')} className="flex-1 px-4 py-3 bg-slate-700 rounded-lg font-medium hover:bg-slate-600 transition-colors">View results</button>
-              </div>
-              <button onClick={() => setView('landing')} className="w-full mt-4 text-slate-400 hover:text-slate-300 text-sm">← Back to home</button>
-              <button onClick={() => setView('create')} className="w-full mt-2 text-slate-400 hover:text-slate-300 text-sm">✎ Edit meeting details</button>
-            </div>
-          </div>
-        );
-      }
-
-      if (view === 'guest') return <GuestView meeting={meetingData} meetingId={meetingId} existingResponse={guestResponse} onSubmitted={(response) => { setGuestResponse(response); setView('submitted'); }} onViewResults={() => setView('results')} />;
-
-      if (view === 'submitted') {
-        return (
-          <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
-            <div className="max-w-xl mx-auto pt-16 text-center">
-              <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6 text-green-400"><Icon name="check" className="w-8 h-8" /></div>
-              <h1 className="text-3xl font-bold mb-2">Availability submitted!</h1>
-              <p className="text-slate-400 mb-8">Your response has been recorded.</p>
-              <button onClick={() => setView('results')} className="px-6 py-3 bg-violet-600 rounded-lg font-medium hover:bg-violet-500 transition-colors">View results</button>
-              <button onClick={() => setView('guest')} className="w-full mt-4 text-slate-400 hover:text-slate-300 text-sm">← Edit my response</button>
-            </div>
-          </div>
-        );
-      }
-
-      if (view === 'results') return <ResultsView meeting={meetingData} meetingId={meetingId} onBack={() => setView('guest')} />;
-      return null;
+      return <DesktopApp state={state} setState={setState} project={project} updateProject={updateProject} setView={setView} setModel={setModel} setCurrentSession={setCurrentSession} setSelectedDoc={setSelectedDoc} setSelectedDataset={setSelectedDataset} setSelectedSkill={setSelectedSkill} />;
     }
 
-    function CreateMeeting({ onBack, onCreated, initialData }) {
-      const [title, setTitle] = useState(initialData?.title || '');
-      const [description, setDescription] = useState(initialData?.description || '');
-      const [patterns, setPatterns] = useState(initialData?.patterns || []);
-      const [startTime, setStartTime] = useState(initialData?.startTime || '9:00 AM');
-      const [endTime, setEndTime] = useState(initialData?.endTime || '5:00 PM');
-      const [timezone, setTimezone] = useState(initialData?.timezone || 'America/New_York');
-      const [duration, setDuration] = useState(initialData?.duration || '60');
-
-      const togglePattern = (ord, day) => {
-        const key = `${ord}-${day}`;
-        setPatterns(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
-      };
-
-      const handleCreate = () => {
-        if (!title.trim() || patterns.length === 0) return;
-        const data = { title, description, patterns, startTime, endTime, timezone, duration, created: Date.now() };
-        onCreated(data, encodeMeeting(data));
-      };
+    // =====================================================================
+    // DESKTOP LAYOUT
+    // =====================================================================
+    function DesktopApp(props) {
+      const { state, setState, project, updateProject, setView } = props;
 
       return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
-          <div className="max-w-2xl mx-auto">
-            <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-300 mb-8"><Icon name="arrowLeft" className="w-4 h-4" /> Back</button>
-            <h1 className="text-3xl font-bold mb-8">{initialData ? 'Edit meeting' : 'Create a meeting'}</h1>
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-2">Meeting title *</label>
-                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Monthly team sync" className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Description (optional)</label>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Add any details..." rows={2} className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 resize-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-3">Time preferences</label>
-                <div className="grid grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">Duration</label>
-                    <select value={duration} onChange={(e) => setDuration(e.target.value)} className="w-full px-3 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 text-sm">
-                      <option value="30">30 min</option><option value="60">1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">Start time</label>
-                    <select value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full px-3 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 text-sm">
-                      {START_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">End time</label>
-                    <select value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full px-3 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 text-sm">
-                      {END_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">Time zone</label>
-                    <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="w-full px-3 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 text-sm">
-                      {TIMEZONES.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-3">Select recurring patterns *</label>
-                <p className="text-slate-400 text-sm mb-4">Click to select which day patterns to offer</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-separate" style={{ borderSpacing: '4px' }}>
-                    <thead><tr><th className="p-2 w-16"></th>{DAYS.map(day => <th key={day} className="p-2 text-slate-400 font-medium w-12">{day.slice(0, 3)}</th>)}</tr></thead>
-                    <tbody>
-                      {ORDINALS.map(ord => (
-                        <tr key={ord}>
-                          <td className="p-2 text-slate-400 font-medium">{ord}</td>
-                          {DAYS.map(day => {
-                            const key = `${ord}-${day}`;
-                            const selected = patterns.includes(key);
-                            return (
-                              <td key={day} className="p-0">
-                                <button onClick={() => togglePattern(ord, day)} className={`w-12 h-12 rounded-lg transition-all flex items-center justify-center ${selected ? 'bg-violet-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-500'}`}>
-                                  {selected && <Icon name="check" className="w-4 h-4" />}
-                                </button>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {patterns.length > 0 && <p className="text-sm text-violet-400 mt-3">{patterns.length} pattern{patterns.length !== 1 && 's'} selected</p>}
-              </div>
-              <button onClick={handleCreate} disabled={!title.trim() || patterns.length === 0} className="w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:from-violet-500 hover:to-indigo-500 transition-all mt-8">{initialData ? 'Update meeting' : 'Create meeting'}</button>
-            </div>
+        <div className="h-screen flex flex-col bg-slate-950 text-slate-100">
+          <TopBar {...props} />
+          <div className="flex-1 flex overflow-hidden">
+            <Sidebar {...props} />
+            <main className="flex-1 overflow-hidden">
+              <ViewRouter {...props} />
+            </main>
           </div>
         </div>
       );
     }
 
-    function GuestView({ meeting, meetingId, existingResponse, onSubmitted, onViewResults }) {
-      const [name, setName] = useState(existingResponse?.name || '');
-      const [selectedCells, setSelectedCells] = useState(() => {
-        if (existingResponse?.availability) {
-          return new Set(existingResponse.availability.map(a => `${a.pattern}|${a.timeKey}`));
-        }
-        return new Set();
-      });
-      const [isSelecting, setIsSelecting] = useState(false);
-      const [submitting, setSubmitting] = useState(false);
-      const [privateLink, setPrivateLink] = useState(null);
-      const [responseId, setResponseId] = useState(existingResponse?.id || null);
-
-      const getTimezoneLabel = (v) => TIMEZONES.find(t => t.value === v)?.label || v;
-
-      const generateTimeSlots = () => {
-        const slots = [];
-        const parseHour = (ts) => { const h = parseInt(ts.split(':')[0]); const pm = ts.includes('PM'); return h === 12 ? (pm ? 12 : 0) : (pm ? h + 12 : h); };
-        const formatHour = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h >= 12 ? 'PM' : 'AM'}`;
-        const startH = parseHour(meeting.startTime), endH = parseHour(meeting.endTime), durH = parseInt(meeting.duration) / 60;
-        for (let h = startH; h + durH <= endH; h++) slots.push({ label: `${formatHour(h)} – ${formatHour(h + durH)}`, key: `${h}-${h + durH}` });
-        return slots;
-      };
-
-      const timeSlots = generateTimeSlots();
-      const getOrdinal = (p) => p.split('-')[0];
-      const getDay = (p) => p.split('-')[1];
-      const ordinalOrder = { 'First': 0, 'Second': 1, 'Third': 2, 'Fourth': 3, 'Last': 4 };
-      const dayOrder = { 'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6 };
-      
-      // Sort patterns by ordinal first, then by day
-      const sortedPatterns = [...meeting.patterns].sort((a, b) => {
-        const ordDiff = ordinalOrder[getOrdinal(a)] - ordinalOrder[getOrdinal(b)];
-        if (ordDiff !== 0) return ordDiff;
-        return dayOrder[getDay(a)] - dayOrder[getDay(b)];
-      });
-      
-      const patternsWithGaps = sortedPatterns.map((p, i) => ({ pattern: p, hasGapAfter: i < sortedPatterns.length - 1 && getOrdinal(p) !== getOrdinal(sortedPatterns[i + 1]) }));
-      const getCellKey = (p, t) => `${p}|${t}`;
-
-      const handleMouseDown = (p, t) => { setIsSelecting(true); const k = getCellKey(p, t); setSelectedCells(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; }); };
-      const handleMouseEnter = (p, t) => { if (isSelecting) setSelectedCells(prev => new Set(prev).add(getCellKey(p, t))); };
-      const handleMouseUp = () => setIsSelecting(false);
-      useEffect(() => { window.addEventListener('mouseup', handleMouseUp); return () => window.removeEventListener('mouseup', handleMouseUp); }, []);
-
-      const getAvailabilityData = () => Array.from(selectedCells).map(c => { const [p, t] = c.split('|'); return { pattern: p, timeKey: t, timeLabel: timeSlots.find(s => s.key === t)?.label || t }; });
-
-      const handleSubmit = async () => { 
-        if (!name.trim() || selectedCells.size === 0) return; 
-        setSubmitting(true); 
-        const availability = getAvailabilityData();
-        let id = responseId;
-        let ok;
-        if (responseId) {
-          ok = await supabase.updateResponse(responseId, name, availability);
-        } else {
-          id = await supabase.addResponse(meetingId, name, availability);
-          ok = !!id;
-        }
-        setSubmitting(false); 
-        if (ok) onSubmitted({ id, name, availability }); 
-      };
-
-      const handleGetPrivateLink = () => { if (!name.trim() || selectedCells.size === 0) return; setPrivateLink(`${window.location.origin}${window.location.pathname}#/response/${encodeResponse({ name, availability: getAvailabilityData() })}`); };
-
-      if (privateLink) {
-        return (
-          <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
-            <div className="max-w-xl mx-auto pt-16 text-center">
-              <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6 text-green-400"><Icon name="shield" className="w-8 h-8" /></div>
-              <h1 className="text-3xl font-bold mb-2">Private link created!</h1>
-              <p className="text-slate-400 mb-8">Send this link directly to the host. Your data won't be stored.</p>
-              <div className="bg-slate-800/70 rounded-lg p-4 flex items-center gap-3 mb-6 border border-slate-700 text-left">
-                <span className="text-slate-400"><Icon name="link" /></span>
-                <span className="text-sm truncate flex-1 text-slate-300">{privateLink}</span>
-                <button onClick={() => navigator.clipboard.writeText(privateLink)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors"><Icon name="copy" className="w-4 h-4" /></button>
-              </div>
-              <p className="text-slate-500 text-sm">Copy and send via email, text, or any messaging app.</p>
-              <button onClick={() => setPrivateLink(null)} className="w-full mt-6 text-slate-400 hover:text-slate-300 text-sm">← Go back to edit</button>
-            </div>
-          </div>
-        );
-      }
+    // =====================================================================
+    // MOBILE LAYOUT
+    // =====================================================================
+    function MobileApp(props) {
+      const { state, setState, project, updateProject, setView } = props;
+      const view = state.view;
 
       return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
-          <div className="max-w-4xl mx-auto pt-8">
-            <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 mb-8">
-              <h1 className="text-2xl font-bold mb-2">{meeting.title}</h1>
-              {meeting.description && <p className="text-slate-400">{meeting.description}</p>}
-              <div className="flex flex-wrap gap-4 text-sm text-slate-500 mt-3">
-                <span>{meeting.duration} minutes</span><span>{meeting.startTime} – {meeting.endTime}</span><span>{getTimezoneLabel(meeting.timezone)}</span>
-              </div>
-            </div>
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-2">Your name *</label>
-                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter your name" className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Which days of the month & times work for you? *</label>
-                <p className="text-slate-400 text-sm mb-4">Click or drag to select your available days & times.</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-separate" style={{ borderSpacing: '1px 2px' }} onMouseLeave={handleMouseUp}>
-                    <thead><tr><th className="p-2 text-left text-slate-400 font-medium sticky left-0 bg-slate-950"></th>
-                      {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => { const [o, d] = p.split('-'); return <th key={p} className={`px-1 py-2 text-center text-slate-300 font-medium min-w-20 ${hasGapAfter ? 'border-r-4 border-slate-950' : ''}`}><div className="text-xs text-slate-500">{o}</div><div>{d.slice(0, 3)}</div></th>; })}
-                    </tr></thead>
-                    <tbody>
-                      {timeSlots.map(({ label, key: tk }) => (
-                        <tr key={tk}>
-                          <td className="p-2 text-slate-400 font-medium text-xs whitespace-nowrap sticky left-0 bg-slate-950">{label}</td>
-                          {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => {
-                            const k = getCellKey(p, tk);
-                            return <td key={p} className={`px-0 py-0 ${hasGapAfter ? 'border-r-4 border-slate-950' : ''}`}><button onMouseDown={() => handleMouseDown(p, tk)} onMouseEnter={() => handleMouseEnter(p, tk)} className={`w-full h-10 rounded transition-all select-none ${selectedCells.has(k) ? 'bg-violet-600' : 'bg-slate-800 hover:bg-slate-700'}`} /></td>;
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {selectedCells.size > 0 && <p className="text-sm text-violet-400 mt-3">{selectedCells.size} time slot{selectedCells.size !== 1 && 's'} selected</p>}
-              </div>
-              <div className="bg-slate-800/30 rounded-xl p-6 border border-slate-700/50 space-y-4">
-                <button onClick={handleSubmit} disabled={!name.trim() || selectedCells.size === 0 || submitting} className="w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:from-violet-500 hover:to-indigo-500 transition-all">{submitting ? (responseId ? 'Updating...' : 'Submitting...') : (responseId ? 'Update Availability' : 'Submit Availability')}</button>
-                <p className="text-slate-500 text-xs text-center">{responseId ? 'Your response will be updated.' : 'Your response will be shared with the host and other guests.'}</p>
-                <div className="flex items-center gap-4 my-2"><div className="flex-1 border-t border-slate-700"></div><span className="text-slate-500 text-sm">or</span><div className="flex-1 border-t border-slate-700"></div></div>
-                <button onClick={handleGetPrivateLink} disabled={!name.trim() || selectedCells.size === 0} className="w-full py-4 bg-slate-700 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600 transition-all flex items-center justify-center gap-2"><Icon name="shield" className="w-4 h-4" /> Get Private Link Instead</button>
-                <p className="text-slate-500 text-xs text-center">Send your availability directly to the host without storing any data.</p>
-              </div>
-              <button onClick={onViewResults} className="w-full py-3 text-slate-400 hover:text-slate-300 text-sm">View current results →</button>
-            </div>
-          </div>
+        <div className="h-screen flex flex-col bg-slate-950 text-slate-100">
+          <MobileTopBar {...props} />
+          <main className="flex-1 overflow-hidden">
+            <ViewRouter {...props} mobile />
+          </main>
+          <MobileBottomNav {...props} />
         </div>
       );
     }
 
-    function ResultsView({ meeting, meetingId, onBack }) {
-      const [hoveredCell, setHoveredCell] = useState(null);
-      const [storedResponses, setStoredResponses] = useState([]);
-      const [privateLinks, setPrivateLinks] = useState('');
-      const [loading, setLoading] = useState(true);
+    // =====================================================================
+    // TOP BAR (DESKTOP)
+    // =====================================================================
+    function TopBar(props) {
+      const { state, setState, project, setView, setModel } = props;
+      const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+      const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
-      useEffect(() => { (async () => { const data = await supabase.getResponses(meetingId); setStoredResponses(data.map(r => ({ name: r.name, availability: r.availability }))); setLoading(false); })(); }, [meetingId]);
+      const model = MODELS.find(m => m.id === state.ui.model) || MODELS[0];
 
-      const parsedPrivate = privateLinks.split('\n').map(l => { const m = l.match(/#\/response\/(.+)$/); return m ? decodeResponse(m[1]) : null; }).filter(Boolean);
-      const responses = [...storedResponses, ...parsedPrivate];
-
-      const generateTimeSlots = () => {
-        const slots = [];
-        const parseHour = (ts) => { const h = parseInt(ts.split(':')[0]); const pm = ts.includes('PM'); return h === 12 ? (pm ? 12 : 0) : (pm ? h + 12 : h); };
-        const formatHour = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h >= 12 ? 'PM' : 'AM'}`;
-        const startH = parseHour(meeting.startTime), endH = parseHour(meeting.endTime), durH = parseInt(meeting.duration) / 60;
-        for (let h = startH; h + durH <= endH; h++) slots.push({ label: `${formatHour(h)} – ${formatHour(h + durH)}`, key: `${h}-${h + durH}` });
-        return slots;
+      const switchProject = (id) => { setState(s => ({ ...s, currentProjectId: id })); setProjectMenuOpen(false); };
+      const newProject = () => {
+        const name = prompt('Project name?');
+        if (!name) return;
+        const id = uid();
+        setState(s => ({
+          ...s,
+          projects: [...s.projects, { id, name, createdAt: now(), documents: [], datasets: [], memoryFacts: [], sessions: [], skills: [] }],
+          currentProjectId: id,
+        }));
+        setProjectMenuOpen(false);
       };
 
-      const timeSlots = generateTimeSlots();
-      const getCellKey = (p, t) => `${p}|${t}`;
-      const getOrdinal = (p) => p.split('-')[0];
-      const getDay = (p) => p.split('-')[1];
-      const ordinalOrder = { 'First': 0, 'Second': 1, 'Third': 2, 'Fourth': 3, 'Last': 4 };
-      const dayOrder = { 'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6 };
-      
-      // Sort patterns by ordinal first, then by day
-      const sortedPatterns = [...meeting.patterns].sort((a, b) => {
-        const ordDiff = ordinalOrder[getOrdinal(a)] - ordinalOrder[getOrdinal(b)];
-        if (ordDiff !== 0) return ordDiff;
-        return dayOrder[getDay(a)] - dayOrder[getDay(b)];
-      });
-      
-      const patternsWithGaps = sortedPatterns.map((p, i) => ({ pattern: p, hasGapAfter: i < sortedPatterns.length - 1 && getOrdinal(p) !== getOrdinal(sortedPatterns[i + 1]) }));
-
-      const cellCounts = {}, cellGuests = {};
-      sortedPatterns.forEach(p => timeSlots.forEach(t => { cellCounts[getCellKey(p, t.key)] = 0; cellGuests[getCellKey(p, t.key)] = []; }));
-      responses.forEach(r => r.availability?.forEach(({ pattern, timeKey }) => { const k = getCellKey(pattern, timeKey); if (cellCounts[k] !== undefined) { cellCounts[k]++; cellGuests[k].push(r.name); } }));
-
-      const maxCount = Math.max(...Object.values(cellCounts), 1);
-      const bestCount = Math.max(...Object.values(cellCounts));
-      const bestSlots = Object.entries(cellCounts).filter(([_, c]) => c === bestCount && c > 0).map(([k]) => k);
-
-      const getHeatColor = (c) => { if (c === 0) return 'bg-slate-800'; const i = c / maxCount; return i >= 0.8 ? 'bg-violet-500' : i >= 0.6 ? 'bg-violet-600' : i >= 0.4 ? 'bg-violet-700' : i >= 0.2 ? 'bg-violet-800' : 'bg-violet-900'; };
-
-      if (loading) return <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6 flex items-center justify-center"><p className="text-slate-400">Loading responses...</p></div>;
-
       return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
-          <div className="max-w-4xl mx-auto pt-8">
-            <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-300 mb-6"><Icon name="arrowLeft" className="w-4 h-4" /> Back to voting</button>
-            <h1 className="text-3xl font-bold mb-2">{meeting.title}</h1>
-            <p className="text-slate-400 mb-8">{responses.length} response{responses.length !== 1 && 's'}</p>
-
-            <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 mb-6">
-              <h2 className="font-semibold mb-2 flex items-center gap-2"><Icon name="shield" className="w-4 h-4" /> Add private response links</h2>
-              <p className="text-slate-400 text-sm mb-3">Paste links from guests who chose the private option (one per line)</p>
-              <textarea value={privateLinks} onChange={(e) => setPrivateLinks(e.target.value)} placeholder="https://...#/response/..." rows={3} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 resize-none text-sm font-mono" />
-              {parsedPrivate.length > 0 && <p className="text-sm text-green-400 mt-2">{parsedPrivate.length} private response{parsedPrivate.length !== 1 && 's'} loaded</p>}
+        <header className="h-14 border-b border-slate-800 flex items-center px-4 gap-3 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white">
+              <Icon name="spark" className="w-4 h-4" />
             </div>
+            <span className="font-semibold tracking-tight">Harness</span>
+          </div>
 
-            {responses.length === 0 ? (
-              <div className="bg-slate-800/50 rounded-xl p-8 text-center border border-slate-700/50"><div className="w-12 h-12 mx-auto mb-4 text-slate-600"><Icon name="users" className="w-12 h-12" /></div><p className="text-slate-400">No responses yet. Share your link to start collecting availability!</p></div>
-            ) : (
-              <div className="space-y-6">
-                {bestSlots.length > 0 && (
-                  <div className="bg-violet-600/20 border border-violet-500/50 rounded-xl p-4">
-                    <h3 className="font-semibold text-violet-300 mb-2">★ Best time{bestSlots.length > 1 ? 's' : ''}</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {bestSlots.slice(0, 5).map(s => { const [p, tk] = s.split('|'); const [o, d] = p.split('-'); return <span key={s} className="px-3 py-1 bg-violet-600/30 rounded-full text-sm">{o} {d} {timeSlots.find(t => t.key === tk)?.label}</span>; })}
-                      {bestSlots.length > 5 && <span className="px-3 py-1 text-slate-400 text-sm">+{bestSlots.length - 5} more</span>}
-                    </div>
-                    <p className="text-sm text-violet-400 mt-2">{bestCount} of {responses.length} available</p>
-                  </div>
-                )}
-                <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
-                  <h2 className="font-semibold mb-4">Availability heatmap</h2>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm border-separate" style={{ borderSpacing: '1px 2px' }}>
-                      <thead><tr><th className="p-2 text-left text-slate-400 font-medium sticky left-0 bg-slate-800/50"></th>
-                        {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => { const [o, d] = p.split('-'); return <th key={p} className={`px-1 py-2 text-center text-slate-300 font-medium min-w-20 ${hasGapAfter ? 'border-r-4 border-slate-900' : ''}`}><div className="text-xs text-slate-500">{o}</div><div>{d.slice(0, 3)}</div></th>; })}
-                      </tr></thead>
-                      <tbody>
-                        {timeSlots.map(({ label, key: tk }) => (
-                          <tr key={tk}>
-                            <td className="p-2 text-slate-400 font-medium text-xs whitespace-nowrap sticky left-0 bg-slate-800/50">{label}</td>
-                            {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => {
-                              const k = getCellKey(p, tk), c = cellCounts[k], isBest = bestSlots.includes(k), guests = cellGuests[k] || [];
-                              return (
-                                <td key={p} className={`px-0 py-0 ${hasGapAfter ? 'border-r-4 border-slate-900' : ''} relative`}>
-                                  <div className={`w-full h-10 rounded flex items-center justify-center text-xs font-medium transition-all cursor-default ${getHeatColor(c)} ${isBest ? 'ring-2 ring-violet-400' : ''}`} onMouseEnter={() => setHoveredCell(k)} onMouseLeave={() => setHoveredCell(null)}>{c > 0 && c}</div>
-                                  {hoveredCell === k && guests.length > 0 && (
-                                    <div className="absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg shadow-xl whitespace-nowrap">
-                                      <div className="text-xs font-medium text-slate-300 mb-1">Available:</div>
-                                      <div className="text-sm text-white">{guests.map((n, i) => <div key={i}>{n}</div>)}</div>
-                                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-700"></div>
-                                    </div>
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="flex items-center gap-4 mt-4 text-xs text-slate-400"><span>Less</span><div className="flex gap-1"><div className="w-6 h-4 rounded bg-slate-800"></div><div className="w-6 h-4 rounded bg-violet-900"></div><div className="w-6 h-4 rounded bg-violet-700"></div><div className="w-6 h-4 rounded bg-violet-500"></div></div><span>More</span></div>
-                </div>
-                <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
-                  <h2 className="font-semibold mb-4">Responses</h2>
-                  <div className="space-y-3">{responses.map((r, i) => <div key={i} className="flex items-center justify-between py-2 border-b border-slate-700/50 last:border-0"><span className="font-medium">{r.name}</span><span className="text-sm text-slate-400">{r.availability?.length || 0} slot{(r.availability?.length || 0) !== 1 && 's'}</span></div>)}</div>
+          <div className="relative">
+            <button onClick={() => setProjectMenuOpen(v => !v)} className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-sm">
+              <Icon name="folder" className="w-4 h-4 text-slate-400" />
+              <span>{project.name}</span>
+              <Icon name="chevronDown" className="w-3.5 h-3.5 text-slate-500" />
+            </button>
+            {projectMenuOpen && (
+              <div className="absolute top-full left-0 mt-1 w-64 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-30 p-1">
+                {state.projects.map(p => (
+                  <button key={p.id} onClick={() => switchProject(p.id)} className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between hover:bg-slate-800 ${p.id === project.id ? 'text-violet-300' : ''}`}>
+                    <span>{p.name}</span>
+                    {p.id === project.id && <Icon name="check" className="w-4 h-4" />}
+                  </button>
+                ))}
+                <div className="border-t border-slate-800 mt-1 pt-1">
+                  <button onClick={newProject} className="w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 hover:bg-slate-800 text-slate-400">
+                    <Icon name="plus" className="w-4 h-4" />
+                    New project
+                  </button>
                 </div>
               </div>
             )}
           </div>
+
+          <div className="flex-1" />
+
+          <div className="relative">
+            <button onClick={() => setModelMenuOpen(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-sm">
+              <span className="text-slate-400 text-xs">model</span>
+              <span>{model.name}</span>
+              <Icon name="chevronDown" className="w-3.5 h-3.5 text-slate-500" />
+            </button>
+            {modelMenuOpen && (
+              <div className="absolute top-full right-0 mt-1 w-64 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-30 p-1">
+                {MODELS.map(m => (
+                  <button key={m.id} onClick={() => { setModel(m.id); setModelMenuOpen(false); }} className={`w-full text-left px-3 py-2 text-sm rounded-md hover:bg-slate-800 ${m.id === model.id ? 'text-violet-300' : ''}`}>
+                    <div className="flex items-center justify-between">
+                      <span>{m.name}</span>
+                      {m.id === model.id && <Icon name="check" className="w-4 h-4" />}
+                    </div>
+                    <div className="text-xs text-slate-500">{m.desc}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button onClick={() => setView('settings')} className="p-2 rounded-lg hover:bg-slate-800" title="Settings">
+            <Icon name="settings" className="w-4 h-4 text-slate-400" />
+          </button>
+        </header>
+      );
+    }
+
+    function MobileTopBar(props) {
+      const { state, project } = props;
+      const model = MODELS.find(m => m.id === state.ui.model) || MODELS[0];
+      return (
+        <header className="h-12 border-b border-slate-800 flex items-center px-3 gap-2 shrink-0">
+          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white">
+            <Icon name="spark" className="w-3.5 h-3.5" />
+          </div>
+          <span className="font-semibold text-sm truncate">{project.name}</span>
+          <span className="flex-1" />
+          <span className="text-xs text-slate-500">{model.name}</span>
+        </header>
+      );
+    }
+
+    // =====================================================================
+    // SIDEBAR (DESKTOP)
+    // =====================================================================
+    function Sidebar(props) {
+      const { state, project, setView, updateProject } = props;
+      const view = state.view;
+
+      const navItems = [
+        { id: 'chat', label: 'Chat', icon: 'chat' },
+        { id: 'documents', label: 'Documents', icon: 'doc', count: project.documents.length },
+        { id: 'datasets', label: 'Datasets', icon: 'database', count: project.datasets.length },
+        { id: 'memory', label: 'Memory', icon: 'brain', count: project.memoryFacts.length },
+        { id: 'sessions', label: 'Sessions', icon: 'clock', count: project.sessions.length },
+        { id: 'skills', label: 'Skills', icon: 'spark', count: project.skills.length },
+      ];
+
+      return (
+        <aside className="w-56 border-r border-slate-800 flex flex-col shrink-0 bg-slate-950">
+          <nav className="p-2 space-y-0.5">
+            {navItems.map(item => (
+              <button key={item.id} onClick={() => setView(item.id)} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${view === item.id ? 'bg-violet-600/15 text-violet-200' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50'}`}>
+                <Icon name={item.icon} className="w-4 h-4" />
+                <span className="flex-1 text-left">{item.label}</span>
+                {item.count !== undefined && item.count > 0 && (
+                  <span className="text-xs text-slate-500">{item.count}</span>
+                )}
+              </button>
+            ))}
+          </nav>
+          <div className="flex-1" />
+          <div className="p-3 border-t border-slate-800 text-xs text-slate-500">
+            <div className="flex items-center justify-between mb-1">
+              <span>Backend</span>
+              <span className={state.config.anthropicKeyConfigured ? 'text-green-400' : 'text-amber-400'}>
+                {state.config.anthropicKeyConfigured ? 'wired' : 'scaffold'}
+              </span>
+            </div>
+          </div>
+        </aside>
+      );
+    }
+
+    // =====================================================================
+    // MOBILE BOTTOM NAV
+    // =====================================================================
+    function MobileBottomNav(props) {
+      const { state, setView } = props;
+      const view = state.view;
+
+      const navItems = [
+        { id: 'capture', label: 'Capture', icon: 'capture' },
+        { id: 'chat', label: 'Chat', icon: 'chat' },
+        { id: 'documents', label: 'Docs', icon: 'doc' },
+        { id: 'memory', label: 'Memory', icon: 'brain' },
+        { id: 'settings', label: 'More', icon: 'menu' },
+      ];
+
+      return (
+        <nav className="h-14 border-t border-slate-800 grid grid-cols-5 shrink-0 bg-slate-950">
+          {navItems.map(item => (
+            <button key={item.id} onClick={() => setView(item.id)} className={`flex flex-col items-center justify-center gap-0.5 text-xs ${view === item.id ? 'text-violet-300' : 'text-slate-500'}`}>
+              <Icon name={item.icon} className="w-5 h-5" />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+      );
+    }
+
+    // =====================================================================
+    // VIEW ROUTER
+    // =====================================================================
+    function ViewRouter(props) {
+      const { state, mobile } = props;
+      switch (state.view) {
+        case 'chat':       return <ChatView {...props} />;
+        case 'documents':  return <DocumentsView {...props} />;
+        case 'datasets':   return <DatasetsView {...props} />;
+        case 'memory':     return <MemoryView {...props} />;
+        case 'sessions':   return <SessionsView {...props} />;
+        case 'skills':     return <SkillsView {...props} />;
+        case 'settings':   return <SettingsView {...props} />;
+        case 'capture':    return <CaptureView {...props} />;
+        default:           return <ChatView {...props} />;
+      }
+    }
+
+    // =====================================================================
+    // CHAT VIEW
+    // =====================================================================
+    function ChatView(props) {
+      const { state, setState, project, updateProject, mobile } = props;
+      const [input, setInput] = useState('');
+      const [pending, setPending] = useState(false);
+      const messagesEndRef = useRef(null);
+      const textareaRef = useRef(null);
+
+      // Find current session, or null
+      const session = state.currentSessionId
+        ? project.sessions.find(s => s.id === state.currentSessionId)
+        : null;
+      const messages = session ? session.messages : [];
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messages.length, pending]);
+
+      const startNewSession = () => {
+        const id = uid();
+        const newSess = { id, startedAt: now(), model: state.ui.model, title: null, messages: [] };
+        updateProject(p => ({ ...p, sessions: [newSess, ...p.sessions] }));
+        setState(s => ({ ...s, currentSessionId: id }));
+        return id;
+      };
+
+      const send = async () => {
+        const text = input.trim();
+        if (!text || pending) return;
+        setInput('');
+
+        let sessId = state.currentSessionId;
+        if (!sessId) sessId = startNewSession();
+
+        const userMsg = { role: 'user', content: text, ts: now() };
+
+        // Append user message
+        updateProject(p => ({
+          ...p,
+          sessions: p.sessions.map(s => s.id === sessId
+            ? { ...s, messages: [...s.messages, userMsg], title: s.title || text.slice(0, 60) }
+            : s),
+        }));
+
+        setPending(true);
+        try {
+          // Gather context for the call (will use this when wired)
+          const sessNow = (project.sessions.find(s => s.id === sessId) || { messages: [] });
+          const fullMessages = [...sessNow.messages, userMsg];
+          const reply = await callClaudeStub(fullMessages, { model: state.ui.model });
+          updateProject(p => ({
+            ...p,
+            sessions: p.sessions.map(s => s.id === sessId
+              ? { ...s, messages: [...s.messages, reply] }
+              : s),
+          }));
+        } catch (e) {
+          updateProject(p => ({
+            ...p,
+            sessions: p.sessions.map(s => s.id === sessId
+              ? { ...s, messages: [...s.messages, { role: 'assistant', content: `Error: ${e.message}`, ts: now(), error: true }] }
+              : s),
+          }));
+        } finally {
+          setPending(false);
+        }
+      };
+
+      const onKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          send();
+        }
+      };
+
+      const autoResize = (el) => {
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 240) + 'px';
+      };
+
+      return (
+        <div className="h-full flex flex-col">
+          {/* Header */}
+          <div className="border-b border-slate-800 px-4 py-2.5 flex items-center gap-2 shrink-0">
+            <div className="text-sm font-medium">
+              {session ? (session.title || 'Untitled session') : 'New session'}
+            </div>
+            <span className="flex-1" />
+            <button onClick={() => setState(s => ({ ...s, currentSessionId: null }))} className="text-xs px-2.5 py-1 rounded-md hover:bg-slate-800 text-slate-400">
+              + New
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
+            <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
+              {messages.length === 0 && (
+                <div className="text-center text-slate-500 py-12">
+                  <Icon name="chat" className="w-8 h-8 mx-auto mb-3 opacity-40" />
+                  <p className="text-sm">Start typing to begin a session.</p>
+                  <p className="text-xs mt-1 text-slate-600">Memory, skills, and project state will be injected once the backend is wired.</p>
+                </div>
+              )}
+              {messages.map((m, i) => <MessageBubble key={i} message={m} />)}
+              {pending && (
+                <div className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white shrink-0">
+                    <Icon name="spark" className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="flex gap-1 pt-2.5">
+                    <span className="dot w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                    <span className="dot w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                    <span className="dot w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Composer */}
+          <div className="border-t border-slate-800 p-3 shrink-0">
+            <div className="max-w-3xl mx-auto">
+              <div className="flex gap-2 items-end bg-slate-900 border border-slate-700 rounded-xl p-2 focus-within:border-violet-500/50">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => { setInput(e.target.value); autoResize(e.target); }}
+                  onKeyDown={onKeyDown}
+                  placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+                  rows={1}
+                  className="flex-1 bg-transparent resize-none focus:outline-none text-sm py-1.5 px-2 max-h-60"
+                />
+                <button onClick={send} disabled={!input.trim() || pending} className="p-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:text-slate-500 text-white shrink-0">
+                  <Icon name="send" className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       );
     }
 
+    function MessageBubble({ message }) {
+      const isUser = message.role === 'user';
+      const html = useMemo(() => {
+        if (typeof window === 'undefined' || !window.marked) return null;
+        try {
+          window.marked.setOptions({ breaks: true });
+          return { __html: window.marked.parse(message.content || '') };
+        } catch { return null; }
+      }, [message.content]);
+
+      if (isUser) {
+        return (
+          <div className="flex items-start gap-3 justify-end">
+            <div className="bg-violet-600/15 border border-violet-500/20 rounded-2xl rounded-tr-md px-4 py-2.5 max-w-[80%]">
+              <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className="flex items-start gap-3">
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white shrink-0">
+            <Icon name="spark" className="w-3.5 h-3.5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            {html
+              ? <div className="prose-invert text-sm" dangerouslySetInnerHTML={html} />
+              : <div className="text-sm whitespace-pre-wrap">{message.content}</div>}
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // DOCUMENTS VIEW
+    // =====================================================================
+    function DocumentsView(props) {
+      const { state, setState, project, updateProject } = props;
+      const docs = project.documents;
+      const selectedId = state.selectedDocId || docs[0]?.id;
+      const doc = docs.find(d => d.id === selectedId);
+
+      const newDoc = () => {
+        const id = uid();
+        const d = { id, title: 'Untitled', content: '', createdAt: now(), updatedAt: now(), versions: [] };
+        updateProject(p => ({ ...p, documents: [d, ...p.documents] }));
+        setState(s => ({ ...s, selectedDocId: id }));
+      };
+
+      const updateDoc = (id, patch) => {
+        updateProject(p => ({
+          ...p,
+          documents: p.documents.map(d => d.id === id ? { ...d, ...patch, updatedAt: now() } : d),
+        }));
+      };
+
+      const deleteDoc = (id) => {
+        if (!confirm('Delete this document?')) return;
+        updateProject(p => ({ ...p, documents: p.documents.filter(d => d.id !== id) }));
+        setState(s => ({ ...s, selectedDocId: null }));
+      };
+
+      return (
+        <div className="h-full flex">
+          {/* Doc list */}
+          <div className="w-64 border-r border-slate-800 flex flex-col shrink-0">
+            <div className="p-3 flex items-center gap-2 border-b border-slate-800">
+              <span className="text-xs uppercase tracking-wide text-slate-500 font-medium">Documents</span>
+              <span className="flex-1" />
+              <button onClick={newDoc} className="p-1 rounded hover:bg-slate-800 text-slate-400" title="New">
+                <Icon name="plus" className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-0.5">
+              {docs.length === 0 && (
+                <div className="text-xs text-slate-500 p-4 text-center">No documents yet</div>
+              )}
+              {docs.map(d => (
+                <button key={d.id} onClick={() => setState(s => ({ ...s, selectedDocId: d.id }))} className={`w-full text-left px-2.5 py-2 rounded-md text-sm ${d.id === selectedId ? 'bg-slate-800 text-slate-100' : 'text-slate-400 hover:bg-slate-800/50'}`}>
+                  <div className="truncate">{d.title || 'Untitled'}</div>
+                  <div className="text-xs text-slate-500 truncate">{fmtDate(d.updatedAt)}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Editor + preview */}
+          {doc ? (
+            <DocumentEditor doc={doc} onChange={(patch) => updateDoc(doc.id, patch)} onDelete={() => deleteDoc(doc.id)} />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-slate-500">
+              <div className="text-center">
+                <Icon name="doc" className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <button onClick={newDoc} className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm text-white">
+                  Create your first document
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function DocumentEditor({ doc, onChange, onDelete }) {
+      const [mode, setMode] = useState('split'); // 'edit' | 'split' | 'preview'
+
+      const html = useMemo(() => {
+        if (typeof window === 'undefined' || !window.marked) return null;
+        try {
+          window.marked.setOptions({ breaks: true });
+          return { __html: window.marked.parse(doc.content || '') };
+        } catch { return null; }
+      }, [doc.content]);
+
+      return (
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Doc header */}
+          <div className="border-b border-slate-800 px-4 py-2.5 flex items-center gap-2 shrink-0">
+            <input
+              value={doc.title}
+              onChange={(e) => onChange({ title: e.target.value })}
+              className="bg-transparent text-sm font-medium focus:outline-none focus-ring rounded px-1 flex-1 min-w-0"
+              placeholder="Untitled"
+            />
+            <div className="flex items-center gap-1 bg-slate-900 rounded-md p-0.5">
+              {[
+                { id: 'edit', icon: 'edit', label: 'Edit' },
+                { id: 'split', icon: 'menu', label: 'Split' },
+                { id: 'preview', icon: 'eye', label: 'Preview' },
+              ].map(m => (
+                <button key={m.id} onClick={() => setMode(m.id)} className={`px-2 py-1 text-xs rounded ${mode === m.id ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:text-slate-200'}`} title={m.label}>
+                  <Icon name={m.icon} className="w-3.5 h-3.5" />
+                </button>
+              ))}
+            </div>
+            <button onClick={onDelete} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-red-400" title="Delete">
+              <Icon name="trash" className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 flex overflow-hidden">
+            {(mode === 'edit' || mode === 'split') && (
+              <textarea
+                value={doc.content}
+                onChange={(e) => onChange({ content: e.target.value })}
+                className={`${mode === 'split' ? 'w-1/2 border-r border-slate-800' : 'flex-1'} bg-slate-950 p-4 text-sm leading-relaxed focus:outline-none resize-none scrollbar-thin font-mono`}
+                placeholder={"# Heading\n\nStart writing..."}
+                style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
+              />
+            )}
+            {(mode === 'preview' || mode === 'split') && (
+              <div className={`${mode === 'split' ? 'w-1/2' : 'flex-1'} overflow-y-auto scrollbar-thin p-4`}>
+                {html
+                  ? <div className="prose-invert text-sm max-w-2xl" dangerouslySetInnerHTML={html} />
+                  : <div className="text-slate-500 text-sm">No content</div>}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-800 px-4 py-1.5 text-xs text-slate-500 shrink-0 flex items-center gap-3">
+            <span>updated {fmtDate(doc.updatedAt)}</span>
+            <span>•</span>
+            <span>{(doc.content || '').length} chars</span>
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // DATASETS VIEW
+    // =====================================================================
+    function DatasetsView(props) {
+      const { state, setState, project, updateProject } = props;
+      const datasets = project.datasets;
+      const selectedId = state.selectedDatasetId || datasets[0]?.id;
+      const ds = datasets.find(d => d.id === selectedId);
+
+      const newDataset = () => {
+        const name = prompt('Dataset name?');
+        if (!name) return;
+        const id = uid();
+        const d = { id, name, schema: [{ id: uid(), name: 'name', type: 'text' }], rows: [] };
+        updateProject(p => ({ ...p, datasets: [d, ...p.datasets] }));
+        setState(s => ({ ...s, selectedDatasetId: id }));
+      };
+
+      const updateDataset = (id, updater) => {
+        updateProject(p => ({
+          ...p,
+          datasets: p.datasets.map(d => d.id === id ? updater(d) : d),
+        }));
+      };
+
+      const deleteDataset = (id) => {
+        if (!confirm('Delete this dataset and all its rows?')) return;
+        updateProject(p => ({ ...p, datasets: p.datasets.filter(d => d.id !== id) }));
+        setState(s => ({ ...s, selectedDatasetId: null }));
+      };
+
+      return (
+        <div className="h-full flex">
+          <div className="w-56 border-r border-slate-800 flex flex-col shrink-0">
+            <div className="p-3 flex items-center gap-2 border-b border-slate-800">
+              <span className="text-xs uppercase tracking-wide text-slate-500 font-medium">Datasets</span>
+              <span className="flex-1" />
+              <button onClick={newDataset} className="p-1 rounded hover:bg-slate-800 text-slate-400" title="New">
+                <Icon name="plus" className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-0.5">
+              {datasets.length === 0 && <div className="text-xs text-slate-500 p-4 text-center">No datasets yet</div>}
+              {datasets.map(d => (
+                <button key={d.id} onClick={() => setState(s => ({ ...s, selectedDatasetId: d.id }))} className={`w-full text-left px-2.5 py-2 rounded-md text-sm ${d.id === selectedId ? 'bg-slate-800 text-slate-100' : 'text-slate-400 hover:bg-slate-800/50'}`}>
+                  <div className="truncate">{d.name}</div>
+                  <div className="text-xs text-slate-500">{d.rows.length} rows · {d.schema.length} fields</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {ds ? (
+            <DatasetGrid dataset={ds} onChange={(updater) => updateDataset(ds.id, updater)} onDelete={() => deleteDataset(ds.id)} />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-slate-500">
+              <div className="text-center">
+                <Icon name="database" className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <button onClick={newDataset} className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm text-white">
+                  Create your first dataset
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function DatasetGrid({ dataset, onChange, onDelete }) {
+      const [schemaOpen, setSchemaOpen] = useState(false);
+      const [editingCell, setEditingCell] = useState(null); // { rowId, field }
+
+      const addRow = () => {
+        const row = { id: uid() };
+        dataset.schema.forEach(f => { row[f.name] = f.type === 'multiselect' ? [] : (f.type === 'boolean' ? false : ''); });
+        onChange(d => ({ ...d, rows: [...d.rows, row] }));
+      };
+
+      const deleteRow = (rowId) => {
+        onChange(d => ({ ...d, rows: d.rows.filter(r => r.id !== rowId) }));
+      };
+
+      const setCell = (rowId, fieldName, value) => {
+        onChange(d => ({
+          ...d,
+          rows: d.rows.map(r => r.id === rowId ? { ...r, [fieldName]: value } : r),
+        }));
+      };
+
+      return (
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="border-b border-slate-800 px-4 py-2.5 flex items-center gap-2 shrink-0">
+            <input
+              value={dataset.name}
+              onChange={(e) => onChange(d => ({ ...d, name: e.target.value }))}
+              className="bg-transparent text-sm font-medium focus:outline-none focus-ring rounded px-1 flex-1 min-w-0"
+            />
+            <button onClick={() => setSchemaOpen(true)} className="text-xs px-2.5 py-1 rounded-md hover:bg-slate-800 text-slate-300">
+              Edit fields
+            </button>
+            <button onClick={addRow} className="text-xs px-2.5 py-1 rounded-md bg-violet-600 hover:bg-violet-500 text-white flex items-center gap-1">
+              <Icon name="plus" className="w-3.5 h-3.5" />
+              Add row
+            </button>
+            <button onClick={onDelete} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-red-400" title="Delete dataset">
+              <Icon name="trash" className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto scrollbar-thin">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-900 z-10">
+                <tr>
+                  {dataset.schema.map(f => (
+                    <th key={f.id} className="text-left px-3 py-2 text-xs uppercase tracking-wide text-slate-500 font-medium border-b border-slate-800 whitespace-nowrap">
+                      {f.name}
+                    </th>
+                  ))}
+                  <th className="w-10 border-b border-slate-800"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataset.rows.map(row => (
+                  <tr key={row.id} className="hover:bg-slate-900/40 group">
+                    {dataset.schema.map(f => (
+                      <td key={f.id} className="border-b border-slate-800/60 align-top">
+                        <DatasetCell
+                          field={f}
+                          value={row[f.name]}
+                          onChange={(v) => setCell(row.id, f.name, v)}
+                          editing={editingCell && editingCell.rowId === row.id && editingCell.field === f.name}
+                          onEdit={() => setEditingCell({ rowId: row.id, field: f.name })}
+                          onBlur={() => setEditingCell(null)}
+                        />
+                      </td>
+                    ))}
+                    <td className="border-b border-slate-800/60 align-middle px-2">
+                      <button onClick={() => deleteRow(row.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-800 text-slate-500 hover:text-red-400">
+                        <Icon name="trash" className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {dataset.rows.length === 0 && (
+                  <tr><td colSpan={dataset.schema.length + 1} className="text-center text-slate-500 py-8 text-sm">No rows. Click "Add row" to start.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {schemaOpen && (
+            <SchemaEditor dataset={dataset} onChange={onChange} onClose={() => setSchemaOpen(false)} />
+          )}
+        </div>
+      );
+    }
+
+    function DatasetCell({ field, value, onChange, editing, onEdit, onBlur }) {
+      const display = (v) => {
+        if (v === undefined || v === null || v === '') return <span className="text-slate-600">—</span>;
+        if (field.type === 'multiselect') return (Array.isArray(v) ? v : []).join(', ');
+        if (field.type === 'boolean') return v ? '✓' : '';
+        return String(v);
+      };
+
+      if (field.type === 'select' && editing) {
+        return (
+          <select autoFocus value={value || ''} onChange={(e) => { onChange(e.target.value); onBlur(); }} onBlur={onBlur} className="w-full bg-slate-900 border border-violet-500/50 px-2 py-1 text-sm focus:outline-none">
+            <option value="">—</option>
+            {(field.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        );
+      }
+
+      if (field.type === 'longtext' && editing) {
+        return (
+          <textarea autoFocus value={value || ''} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} rows={3} className="w-full bg-slate-900 border border-violet-500/50 px-2 py-1 text-sm focus:outline-none resize-none scrollbar-thin" />
+        );
+      }
+
+      if (field.type === 'boolean') {
+        return (
+          <div className="px-3 py-2">
+            <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} className="accent-violet-500" />
+          </div>
+        );
+      }
+
+      if (editing) {
+        const type = field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text';
+        return (
+          <input autoFocus type={type} value={value || ''} onChange={(e) => onChange(field.type === 'number' ? Number(e.target.value) : e.target.value)} onBlur={onBlur} onKeyDown={(e) => { if (e.key === 'Enter') onBlur(); }} className="w-full bg-slate-900 border border-violet-500/50 px-2 py-1 text-sm focus:outline-none" />
+        );
+      }
+
+      // Pill display for select/multiselect
+      if (field.type === 'select' && value) {
+        return (
+          <div onClick={onEdit} className="px-3 py-2 cursor-pointer">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-violet-600/15 text-violet-300 border border-violet-500/20">{value}</span>
+          </div>
+        );
+      }
+
+      return (
+        <div onClick={onEdit} className="px-3 py-2 cursor-pointer text-slate-200 min-h-[2.4rem] whitespace-pre-wrap break-words">
+          {display(value)}
+        </div>
+      );
+    }
+
+    function SchemaEditor({ dataset, onChange, onClose }) {
+      const [fields, setFields] = useState(dataset.schema);
+      const [optionsText, setOptionsText] = useState({});
+
+      useEffect(() => {
+        const m = {};
+        fields.forEach(f => { if (f.options) m[f.id] = f.options.join(', '); });
+        setOptionsText(m);
+      }, []);
+
+      const addField = () => setFields(fs => [...fs, { id: uid(), name: 'new_field', type: 'text' }]);
+      const removeField = (id) => setFields(fs => fs.filter(f => f.id !== id));
+      const updateField = (id, patch) => setFields(fs => fs.map(f => f.id === id ? { ...f, ...patch } : f));
+
+      const save = () => {
+        // Apply options text
+        const finalFields = fields.map(f => {
+          if (f.type === 'select' || f.type === 'multiselect') {
+            const txt = optionsText[f.id] || '';
+            return { ...f, options: txt.split(',').map(s => s.trim()).filter(Boolean) };
+          }
+          return f;
+        });
+        onChange(d => ({ ...d, schema: finalFields }));
+        onClose();
+      };
+
+      return (
+        <div className="absolute inset-0 bg-slate-950/80 z-40 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-xl max-h-[80vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center">
+              <span className="font-medium text-sm">Edit fields — {dataset.name}</span>
+              <span className="flex-1" />
+              <button onClick={onClose} className="p-1 rounded hover:bg-slate-800"><Icon name="x" className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-2">
+              {fields.map(f => (
+                <div key={f.id} className="border border-slate-800 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input value={f.name} onChange={(e) => updateField(f.id, { name: e.target.value })} className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-violet-500" />
+                    <select value={f.type} onChange={(e) => updateField(f.id, { type: e.target.value })} className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-violet-500">
+                      {FIELD_TYPES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                    <button onClick={() => removeField(f.id)} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-red-400">
+                      <Icon name="trash" className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {(f.type === 'select' || f.type === 'multiselect') && (
+                    <input
+                      value={optionsText[f.id] || ''}
+                      onChange={(e) => setOptionsText(o => ({ ...o, [f.id]: e.target.value }))}
+                      placeholder="Options, comma-separated"
+                      className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-violet-500"
+                    />
+                  )}
+                </div>
+              ))}
+              <button onClick={addField} className="w-full border border-dashed border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-400 hover:text-slate-200 hover:border-slate-600 flex items-center justify-center gap-1">
+                <Icon name="plus" className="w-4 h-4" /> Add field
+              </button>
+            </div>
+            <div className="px-4 py-3 border-t border-slate-800 flex justify-end gap-2">
+              <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md hover:bg-slate-800 text-slate-300">Cancel</button>
+              <button onClick={save} className="px-3 py-1.5 text-sm rounded-md bg-violet-600 hover:bg-violet-500 text-white">Save</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // MEMORY VIEW
+    // =====================================================================
+    function MemoryView(props) {
+      const { project, updateProject } = props;
+      const [draft, setDraft] = useState({});
+
+      const addFact = (bucket) => {
+        const content = (draft[bucket] || '').trim();
+        if (!content) return;
+        const fact = { id: uid(), bucket, content, createdAt: now() };
+        updateProject(p => ({ ...p, memoryFacts: [fact, ...p.memoryFacts] }));
+        setDraft(d => ({ ...d, [bucket]: '' }));
+      };
+
+      const updateFact = (id, content) => {
+        updateProject(p => ({
+          ...p,
+          memoryFacts: p.memoryFacts.map(f => f.id === id ? { ...f, content, updatedAt: now() } : f),
+        }));
+      };
+
+      const deleteFact = (id) => {
+        updateProject(p => ({ ...p, memoryFacts: p.memoryFacts.filter(f => f.id !== id) }));
+      };
+
+      return (
+        <div className="h-full overflow-y-auto scrollbar-thin">
+          <div className="max-w-3xl mx-auto p-6 space-y-6">
+            <header className="mb-2">
+              <h1 className="text-xl font-semibold">Memory</h1>
+              <p className="text-sm text-slate-400 mt-1">Facts Claude can read. Force-injected when relevant.</p>
+            </header>
+
+            {MEMORY_BUCKETS.map(bucket => {
+              const facts = project.memoryFacts.filter(f => f.bucket === bucket.id);
+              return (
+                <section key={bucket.id} className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
+                  <div className="flex items-baseline justify-between mb-3">
+                    <div>
+                      <h2 className="font-medium">{bucket.name}</h2>
+                      <p className="text-xs text-slate-500">{bucket.desc}</p>
+                    </div>
+                    <span className="text-xs text-slate-500">{facts.length}</span>
+                  </div>
+
+                  <div className="flex gap-2 mb-3">
+                    <input
+                      value={draft[bucket.id] || ''}
+                      onChange={(e) => setDraft(d => ({ ...d, [bucket.id]: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') addFact(bucket.id); }}
+                      placeholder="Add a fact..."
+                      className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-violet-500"
+                    />
+                    <button onClick={() => addFact(bucket.id)} className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm text-white">Add</button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {facts.map(f => (
+                      <FactRow key={f.id} fact={f} onSave={(c) => updateFact(f.id, c)} onDelete={() => deleteFact(f.id)} />
+                    ))}
+                    {facts.length === 0 && <div className="text-xs text-slate-500 italic">No facts yet.</div>}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    function FactRow({ fact, onSave, onDelete }) {
+      const [editing, setEditing] = useState(false);
+      const [text, setText] = useState(fact.content);
+
+      const save = () => {
+        if (text.trim() && text !== fact.content) onSave(text.trim());
+        setEditing(false);
+      };
+
+      if (editing) {
+        return (
+          <div className="flex gap-2">
+            <textarea value={text} onChange={(e) => setText(e.target.value)} onBlur={save} autoFocus rows={2} className="flex-1 bg-slate-950 border border-violet-500/50 rounded-lg px-3 py-1.5 text-sm focus:outline-none resize-none" />
+          </div>
+        );
+      }
+
+      return (
+        <div className="group flex items-start gap-2 p-2 rounded-lg hover:bg-slate-900/60">
+          <div className="flex-1 text-sm text-slate-200 leading-relaxed cursor-text" onClick={() => setEditing(true)}>{fact.content}</div>
+          <button onClick={onDelete} className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-800 text-slate-500 hover:text-red-400">
+            <Icon name="trash" className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // SESSIONS VIEW
+    // =====================================================================
+    function SessionsView(props) {
+      const { state, setState, project, updateProject } = props;
+      const [query, setQuery] = useState('');
+
+      const filtered = project.sessions.filter(s => {
+        if (!query.trim()) return true;
+        const q = query.toLowerCase();
+        if ((s.title || '').toLowerCase().includes(q)) return true;
+        return s.messages.some(m => (m.content || '').toLowerCase().includes(q));
+      });
+
+      const openSession = (id) => setState(s => ({ ...s, currentSessionId: id, view: 'chat' }));
+
+      const deleteSession = (id) => {
+        if (!confirm('Delete this session?')) return;
+        updateProject(p => ({ ...p, sessions: p.sessions.filter(s => s.id !== id) }));
+      };
+
+      return (
+        <div className="h-full flex flex-col">
+          <div className="border-b border-slate-800 p-3 flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 flex-1 max-w-md bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5">
+              <Icon name="search" className="w-4 h-4 text-slate-500" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search sessions..." className="flex-1 bg-transparent text-sm focus:outline-none" />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
+            <div className="max-w-3xl mx-auto p-4 space-y-2">
+              {filtered.length === 0 && (
+                <div className="text-center text-slate-500 py-10 text-sm">
+                  {project.sessions.length === 0 ? 'No sessions yet. Go start one in Chat.' : 'No matches.'}
+                </div>
+              )}
+              {filtered.map(s => (
+                <div key={s.id} className="bg-slate-900/40 border border-slate-800 rounded-lg p-3 hover:border-slate-700 group">
+                  <div className="flex items-baseline gap-2">
+                    <button onClick={() => openSession(s.id)} className="font-medium text-sm hover:text-violet-300 text-left flex-1 truncate">
+                      {s.title || 'Untitled'}
+                    </button>
+                    <span className="text-xs text-slate-500 shrink-0">{fmtDate(s.startedAt)}</span>
+                    <button onClick={() => deleteSession(s.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-800 text-slate-500 hover:text-red-400">
+                      <Icon name="trash" className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    {s.messages.length} message{s.messages.length === 1 ? '' : 's'} · {s.model}
+                  </div>
+                  {s.messages[0] && (
+                    <div className="text-xs text-slate-400 mt-2 line-clamp-2">{(s.messages[0].content || '').slice(0, 200)}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // SKILLS VIEW
+    // =====================================================================
+    function SkillsView(props) {
+      const { state, setState, project, updateProject } = props;
+      const skills = project.skills;
+      const selectedId = state.selectedSkillId || skills[0]?.id;
+      const skill = skills.find(s => s.id === selectedId);
+
+      const newSkill = () => {
+        const id = uid();
+        const s = { id, name: 'Untitled skill', mode: 'manual', body: '', updatedAt: now() };
+        updateProject(p => ({ ...p, skills: [s, ...p.skills] }));
+        setState(s2 => ({ ...s2, selectedSkillId: id }));
+      };
+
+      const updateSkill = (id, patch) => {
+        updateProject(p => ({
+          ...p,
+          skills: p.skills.map(s => s.id === id ? { ...s, ...patch, updatedAt: now() } : s),
+        }));
+      };
+
+      const deleteSkill = (id) => {
+        if (!confirm('Delete this skill?')) return;
+        updateProject(p => ({ ...p, skills: p.skills.filter(s => s.id !== id) }));
+        setState(s2 => ({ ...s2, selectedSkillId: null }));
+      };
+
+      return (
+        <div className="h-full flex">
+          <div className="w-64 border-r border-slate-800 flex flex-col shrink-0">
+            <div className="p-3 flex items-center gap-2 border-b border-slate-800">
+              <span className="text-xs uppercase tracking-wide text-slate-500 font-medium">Skills</span>
+              <span className="flex-1" />
+              <button onClick={newSkill} className="p-1 rounded hover:bg-slate-800 text-slate-400"><Icon name="plus" className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-0.5">
+              {skills.length === 0 && <div className="text-xs text-slate-500 p-4 text-center">No skills yet</div>}
+              {skills.map(s => (
+                <button key={s.id} onClick={() => setState(st => ({ ...st, selectedSkillId: s.id }))} className={`w-full text-left px-2.5 py-2 rounded-md text-sm ${s.id === selectedId ? 'bg-slate-800' : 'text-slate-400 hover:bg-slate-800/50'}`}>
+                  <div className="truncate">{s.name}</div>
+                  <div className="text-xs text-slate-500">{SKILL_MODES.find(m => m.id === s.mode)?.name}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {skill ? (
+            <SkillEditor skill={skill} onChange={(patch) => updateSkill(skill.id, patch)} onDelete={() => deleteSkill(skill.id)} />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-slate-500">
+              <div className="text-center">
+                <Icon name="spark" className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm mb-3">No skill selected.</p>
+                <button onClick={newSkill} className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm text-white">Create skill</button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function SkillEditor({ skill, onChange, onDelete }) {
+      return (
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="border-b border-slate-800 px-4 py-2.5 flex items-center gap-2 shrink-0">
+            <input value={skill.name} onChange={(e) => onChange({ name: e.target.value })} className="bg-transparent text-sm font-medium focus:outline-none focus-ring rounded px-1 flex-1 min-w-0" />
+            <button onClick={onDelete} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-red-400">
+              <Icon name="trash" className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="p-4 border-b border-slate-800 shrink-0">
+            <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Update mode</div>
+            <div className="flex gap-2 flex-wrap">
+              {SKILL_MODES.map(m => (
+                <button key={m.id} onClick={() => onChange({ mode: m.id })} className={`px-3 py-2 rounded-lg text-left text-xs border ${skill.mode === m.id ? 'border-violet-500 bg-violet-600/10 text-violet-200' : 'border-slate-700 text-slate-400 hover:border-slate-600'}`}>
+                  <div className="font-medium">{m.name}</div>
+                  <div className="text-slate-500 mt-0.5">{m.desc}</div>
+                </button>
+              ))}
+            </div>
+            <div className="text-xs text-slate-500 mt-3 italic">v2: Claude will be able to propose / apply updates here. For now, edit manually.</div>
+          </div>
+
+          <textarea value={skill.body} onChange={(e) => onChange({ body: e.target.value })} placeholder="Write the skill content..." className="flex-1 bg-slate-950 p-4 text-sm leading-relaxed focus:outline-none resize-none scrollbar-thin font-mono" style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }} />
+
+          <div className="border-t border-slate-800 px-4 py-1.5 text-xs text-slate-500 shrink-0">
+            updated {fmtDate(skill.updatedAt)} · {(skill.body || '').length} chars
+          </div>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // SETTINGS VIEW
+    // =====================================================================
+    function SettingsView(props) {
+      const { state, setState } = props;
+      return (
+        <div className="h-full overflow-y-auto scrollbar-thin">
+          <div className="max-w-2xl mx-auto p-6 space-y-6">
+            <header>
+              <h1 className="text-xl font-semibold">Settings</h1>
+              <p className="text-sm text-slate-400 mt-1">Configure backend wiring, manage projects, view storage.</p>
+            </header>
+
+            <section className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
+              <h2 className="font-medium mb-1">Backend status</h2>
+              <p className="text-xs text-slate-500 mb-3">v1 scaffold uses localStorage. Live wiring comes next.</p>
+              <div className="space-y-2 text-sm">
+                <Status label="Supabase" ok={state.config.supabaseConfigured} note="paste URL + anon key to wire" />
+                <Status label="Anthropic API" ok={state.config.anthropicKeyConfigured} note="key stored as Supabase Edge Function secret" />
+                <Status label="Prompt caching" ok={false} note="enabled with API wiring" />
+                <Status label="Session embeddings" ok={false} note="v2" />
+              </div>
+            </section>
+
+            <section className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
+              <h2 className="font-medium mb-1">Projects</h2>
+              <p className="text-xs text-slate-500 mb-3">Each project has its own documents, datasets, memory, sessions, skills.</p>
+              <div className="space-y-2">
+                {state.projects.map(p => (
+                  <div key={p.id} className="flex items-center gap-2 text-sm">
+                    <div className="flex-1">
+                      <div>{p.name}</div>
+                      <div className="text-xs text-slate-500">{p.documents.length} docs · {p.datasets.length} datasets · {p.memoryFacts.length} facts · {p.sessions.length} sessions</div>
+                    </div>
+                    {state.projects.length > 1 && (
+                      <button onClick={() => {
+                        if (!confirm(`Delete project "${p.name}" and everything in it?`)) return;
+                        setState(s => ({
+                          ...s,
+                          projects: s.projects.filter(x => x.id !== p.id),
+                          currentProjectId: s.currentProjectId === p.id ? s.projects.find(x => x.id !== p.id).id : s.currentProjectId,
+                        }));
+                      }} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-red-400">
+                        <Icon name="trash" className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
+              <h2 className="font-medium mb-1">Local data</h2>
+              <p className="text-xs text-slate-500 mb-3">v1 stores everything in your browser localStorage. Export / import below; once Supabase is wired, this is automatic.</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = `harness-export-${new Date().toISOString().slice(0,10)}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sm">
+                  Export JSON
+                </button>
+                <label className="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sm cursor-pointer">
+                  Import JSON
+                  <input type="file" accept="application/json" className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const text = await file.text();
+                      const parsed = JSON.parse(text);
+                      if (!parsed.projects || !Array.isArray(parsed.projects)) throw new Error('invalid');
+                      if (!confirm('Replace current state with imported data?')) return;
+                      setState(parsed);
+                    } catch (err) { alert('Import failed: ' + err.message); }
+                  }} />
+                </label>
+                <button
+                  onClick={() => {
+                    if (!confirm('Reset to initial demo state? This deletes everything.')) return;
+                    localStorage.removeItem(STORAGE_KEY);
+                    setState(initialState());
+                  }}
+                  className="px-3 py-1.5 rounded-md bg-red-600/15 border border-red-500/30 hover:bg-red-600/25 text-sm text-red-300">
+                  Reset all
+                </button>
+              </div>
+            </section>
+
+            <div className="text-xs text-slate-600 pb-4">
+              Harness v1 scaffold · designed for solo strategy/planning use ·
+              data lives in browser until backend is wired
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Status({ label, ok, note }) {
+      return (
+        <div className="flex items-center gap-2 text-sm">
+          <span className={`w-2 h-2 rounded-full ${ok ? 'bg-green-400' : 'bg-amber-400'}`}></span>
+          <span>{label}</span>
+          <span className="text-xs text-slate-500">— {ok ? 'connected' : note}</span>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // MOBILE QUICK CAPTURE
+    // =====================================================================
+    function CaptureView(props) {
+      const { project, updateProject, setState } = props;
+      const [text, setText] = useState('');
+      const [bucket, setBucket] = useState('about_me');
+      const [saved, setSaved] = useState(false);
+
+      const save = () => {
+        const content = text.trim();
+        if (!content) return;
+        const fact = { id: uid(), bucket, content, createdAt: now() };
+        updateProject(p => ({ ...p, memoryFacts: [fact, ...p.memoryFacts] }));
+        setText('');
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1500);
+      };
+
+      return (
+        <div className="h-full p-4 flex flex-col">
+          <h1 className="text-lg font-semibold mb-1">Quick capture</h1>
+          <p className="text-xs text-slate-500 mb-4">Drop a thought into memory. Searchable later.</p>
+
+          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="What do you want to remember?" className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-violet-500 resize-none" autoFocus />
+
+          <div className="mt-3 space-y-2">
+            <div className="text-xs text-slate-500">Bucket</div>
+            <div className="grid grid-cols-3 gap-2">
+              {MEMORY_BUCKETS.map(b => (
+                <button key={b.id} onClick={() => setBucket(b.id)} className={`px-2 py-1.5 rounded-lg text-xs border ${bucket === b.id ? 'border-violet-500 bg-violet-600/15 text-violet-200' : 'border-slate-700 text-slate-400'}`}>
+                  {b.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={save} disabled={!text.trim()} className="mt-3 px-4 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:bg-slate-800 disabled:text-slate-600 text-white text-sm font-medium">
+            {saved ? '✓ Saved' : 'Save to memory'}
+          </button>
+
+          <button onClick={() => setState(s => ({ ...s, view: 'chat' }))} className="mt-2 text-xs text-slate-400 underline">
+            Or continue last session →
+          </button>
+        </div>
+      );
+    }
+
+    // =====================================================================
+    // RENDER
+    // =====================================================================
     ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   </script>
 </body>
