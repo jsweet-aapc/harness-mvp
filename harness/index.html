@@ -208,7 +208,7 @@
     // =====================================================================
     // SYSTEM PROMPT BUILDER
     // =====================================================================
-    function buildSystemPrompt(project) {
+    function buildSystemPrompt(project, currentSessionId) {
       const parts = [];
       const forceSkills = (project.skills || []).filter(s => s.mode === 'force_inject' && s.body && s.body.trim());
       if (forceSkills.length) {
@@ -222,7 +222,24 @@
       if (byBucket.project.length) memSections.push('### Project state\n' + byBucket.project.map(c => '- ' + c).join('\n'));
       if (byBucket.reference.length) memSections.push('### Reference\n' + byBucket.reference.map(c => '- ' + c).join('\n'));
       if (memSections.length) parts.push('## Memory\n\n' + memSections.join('\n\n'));
-      return parts.length ? parts.join('\n\n---\n\n') : undefined;
+
+      const pastSessions = (project.sessions || [])
+        .filter(s => s.id !== currentSessionId && s.messages && s.messages.length > 0)
+        .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))
+        .slice(0, 3);
+      if (pastSessions.length) {
+        const sessionTexts = pastSessions.map(s => {
+          const title = s.title || 'Untitled';
+          const date = new Date(s.startedAt).toLocaleDateString();
+          const msgs = s.messages.slice(-6);
+          const msgText = msgs.map(m => `**${m.role}:** ${(m.content || '').slice(0, 600)}${(m.content || '').length > 600 ? '…' : ''}`).join('\n\n');
+          return `### ${title} (${date})\n\n${msgText}`;
+        });
+        parts.push('## Recent past sessions (for context — refer back to these if relevant)\n\n' + sessionTexts.join('\n\n---\n\n'));
+      }
+
+      if (!parts.length) return undefined;
+      return [{ type: 'text', text: parts.join('\n\n---\n\n'), cache_control: { type: 'ephemeral' } }];
     }
 
     // =====================================================================
@@ -681,7 +698,7 @@
         try {
           const sessNow = (project.sessions.find(s => s.id === sessId) || { messages: [] });
           const fullMessages = [...sessNow.messages, userMsg];
-          const system = buildSystemPrompt(project);
+          const system = buildSystemPrompt(project, sessId);
           const reply = await callClaude(fullMessages, { model: state.ui.model, system });
           updateProject(p => ({
             ...p,
